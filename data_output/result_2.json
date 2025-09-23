@@ -1,0 +1,116 @@
+{
+  "full_name": "Adebayo Adeyeye",
+  "title": "",
+  "education": "",
+  "languages": [],
+  "domains": [
+    "IT Support (tier 1/2/3)",
+    "Cloud Services",
+    "Environment Architecture",
+    "Deployment",
+    "Monitoring",
+    "DevOps"
+  ],
+  "profile_summary": "Well-rounded professional with relevant experience in IT industry comprising of tier 1,2 and 3 support, AWS cloud services, environment architecting, deployment, and monitoring. Relevant experience navigating moderate to complex technical environments and finding strategic solutions to individual project needs.",
+  "hard_skills": {
+    "backend": [
+      "NodeJs",
+      "EC2",
+      "RDS"
+    ],
+    "frontend": [
+      "ReactJs",
+      "jQuery",
+      "HTML",
+      "CSS"
+    ],
+    "devops": [
+      "Pulumi",
+      "Terraform",
+      "AWS CDK",
+      "Ansible"
+    ],
+    "programming_languages": [
+      "Bash",
+      "NodeJs",
+      "JavaScript",
+      "HTML",
+      "CSS"
+    ],
+    "frameworks": [
+      "ReactJs",
+      "jQuery"
+    ],
+    "databases": [
+      "RDS"
+    ],
+    "cloud_platforms": [
+      "AWS",
+      "GCP",
+      "Digital Ocean",
+      "Azure"
+    ],
+    "ai_ml_tools": [],
+    "monitoring_security": [
+      "CloudWatch",
+      "CloudTrail",
+      "GuardDuty",
+      "WAF",
+      "Shield",
+      "Snyk"
+    ],
+    "containers_orchestration": [
+      "ECS",
+      "Kubernetes"
+    ],
+    "ci_cd_tools": [
+      "CloudFormation"
+    ],
+    "other_tools": [
+      "IAM",
+      "S3",
+      "VPC",
+      "Route53",
+      "SNS",
+      "SQS"
+    ]
+  },
+  "projects": [
+    {
+      "project_title": "",
+      "overview": "",
+      "role": "",
+      "duration": "",
+      "responsibilities": [],
+      "tech_stack": []
+    }
+  ],
+  "skills_overview": [
+    {
+      "category": "Cloud Platforms",
+      "tool": "AWS, GCP, Digital Ocean, Azure",
+      "years_of_experience": ""
+    },
+    {
+      "category": "Infrastructure as Code / DevOps",
+      "tool": "Pulumi, Terraform, AWS CDK, Ansible, CloudFormation",
+      "years_of_experience": ""
+    },
+    {
+      "category": "Containers & Orchestration",
+      "tool": "ECS, Kubernetes",
+      "years_of_experience": ""
+    },
+    {
+      "category": "Programming / Scripting",
+      "tool": "Bash, NodeJs, JavaScript, HTML, CSS",
+      "years_of_experience": ""
+    },
+    {
+      "category": "Monitoring & Security",
+      "tool": "CloudWatch, CloudTrail, GuardDuty, WAF, Shield, Snyk",
+      "years_of_experience": ""
+    }
+  ],
+  "website": ""
+}
