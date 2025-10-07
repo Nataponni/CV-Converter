@@ -1,0 +1,237 @@
+{
+  "full_name": "Adebayo Adeyeye",
+  "title": "Senior DevOps Engineer",
+  "education": "Landmark University, Nigeria. B.Sc. Accounting, Oct 2011 - July 2015",
+  "languages": [
+    {
+      "language": "English",
+      "level": "Fluent"
+    }
+  ],
+  "domains": [
+    "Cloud Computing",
+    "DevOps",
+    "Infrastructure as Code",
+    "Containerization",
+    "Monitoring & Observability",
+    "Security",
+    "CI/CD",
+    "Web Applications",
+    "Databases",
+    "Cloud Operations"
+  ],
+  "profile_summary": "Well-rounded professional with 8 years of IT experience across tier 1–3 support, cloud services, environment architecting, deployment, and monitoring. 5+ years hands-on with AWS and experience with multi-cloud (Azure, GCP, DigitalOcean). Strong background in IaC, containerization (Docker, ECS, Kubernetes), CI/CD pipelines, monitoring (Datadog, CloudWatch, Prometheus, Grafana), and cloud security (WAF, GuardDuty, IAM, SNYK). Experienced in documentation, debugging, and collaborating with development teams to deliver scalable, secure cloud infrastructure.",
+  "hard_skills": {
+    "cloud_platforms": [
+      "AWS Config",
+      "AWS Network Firewall",
+      "AWS Inspector",
+      "Azure DevOps Pipelines",
+      "Azure",
+      "AWS",
+      "AWS CDK",
+      "GCP"
+    ],
+    "devops_iac": [
+      "Terraform",
+      "Ansible",
+      "Docker",
+      "Puppet",
+      "Helm"
+    ],
+    "monitoring_security": [
+      "Datadog APM",
+      "Grafana",
+      "Datadog",
+      "Prometheus"
+    ],
+    "programming_languages": [
+      "JavaScript (NodeJs)",
+      "TypeScript"
+    ],
+    "containers_orchestration": [
+      "Kubernetes"
+    ],
+    "ci_cd_tools": [
+      "Jenkins",
+      "GitLab CI/CD"
+    ],
+    "ai_ml_tools": [],
+    "databases": [
+      "MongoDB",
+      "MySQL",
+      "PostgreSQL"
+    ],
+    "backend": [],
+    "frontend": [
+      "jQuery"
+    ],
+    "security": [
+      "WAF"
+    ],
+    "other_tools": [
+      "HTML",
+      "Snyk",
+      "BigQuery",
+      "CSS",
+      "Morpheus",
+      "CloudFormation",
+      "CloudFront",
+      "Security Groups",
+      "GuardDuty",
+      "Security Monkey",
+      "AKS",
+      "CloudTracker",
+      "Pulumi",
+      "SQS",
+      "Microservices",
+      "ELB",
+      "GitHub",
+      "Bicep",
+      "Bash",
+      "Git",
+      "IAM",
+      "SNS",
+      "NACL",
+      "ECS",
+      "NodeJs",
+      "VMware",
+      "ReactJs",
+      "EBS",
+      "Splunk",
+      "Nexus",
+      "Macie",
+      "Digital Ocean",
+      "Kustomize",
+      "CloudWatch",
+      "ARM templates",
+      "API Gateway",
+      "Maven",
+      "CloudTrail"
+    ]
+  },
+  "projects_experience": [
+    {
+      "project_title": "Senior DevOps Engineer — Accenture, Dublin",
+      "overview": "Architected and maintained cloud infrastructure and IaC solutions for multiple environments; implemented container orchestration, CI/CD pipelines, and monitoring to improve reliability and reduce MTTR.",
+      "role": "Senior DevOps Engineer / Cloud Ops",
+      "duration": "May 2020 – August 2025",
+      "responsibilities": [
+        "Architected and maintained infrastructure-as-code using ARM templates and Bicep for declarative provisioning.",
+        "Provisioned and orchestrated containerized workloads on AKS using HPA, Pod Disruption Budgets, and custom node pools.",
+        "Developed CI/CD pipelines with Azure DevOps YAML, including gated approvals, artifact promotion, and automated rollback.",
+        "Designed and deployed scalable infrastructure using Pulumi with TypeScript on Azure.",
+        "Packaged and deployed microservices into Kubernetes clusters using Helm charts.",
+        "Implemented Datadog APM and infrastructure monitoring, reducing MTTR by 40%.",
+        "Provisioned AWS resources (EC2, VPC, ELB, AutoScaling) and managed AWS-based environments.",
+        "Used CloudFormation and Terraform to automate provisioning and manage environments.",
+        "Built and integrated CI/CD and build frameworks (Jenkins, Maven, Ansible, Nexus)."
+      ],
+      "tech_stack": [
+        "Azure (ARM, Bicep, AKS, Azure DevOps)",
+        "Pulumi (TypeScript)",
+        "Kubernetes",
+        "Helm",
+        "Datadog",
+        "AWS (EC2, VPC, ELB, CloudFormation, CloudWatch, CloudTrail, SNS, SQS)",
+        "Terraform",
+        "Jenkins",
+        "Maven",
+        "Ansible",
+        "Docker"
+      ]
+    },
+    {
+      "project_title": "Cloud DevOps Engineer — Access Bank PLC",
+      "overview": "Engineered and deployed scalable cloud-native infrastructure across multi-cloud environments, implemented monitoring, security hardening, and CI/CD automation to support enterprise applications.",
+      "role": "Cloud DevOps Engineer",
+      "duration": "September 2015 – April 2020",
+      "responsibilities": [
+        "Deployed scalable infrastructure using Pulumi with TypeScript for repeatable deployments on Azure.",
+        "Packaged and deployed microservices to Kubernetes via Helm charts to optimize CI/CD.",
+        "Integrated Datadog for APM and infrastructure monitoring, improving incident response.",
+        "Optimized EC2 EBS volumes and managed multi-cloud automation using Morpheus.",
+        "Implemented cloud security controls using GuardDuty, Macie, AWS Inspector, and tightened ACLs and firewalls.",
+        "Deployed GCP services (Compute Engine, Cloud Run, Dataflow, BigQuery, GCS) for specific projects.",
+        "Used Security Monkey and CloudTracker for auditing and anomaly monitoring of AWS accounts.",
+        "Configured automated provisioning and patching using Ansible and Terraform.",
+        "Managed VMware VMs and ESX host migrations; created VM templates."
+      ],
+      "tech_stack": [
+        "Pulumi (TypeScript)",
+        "Azure (ARM, Bicep, AKS)",
+        "Kubernetes",
+        "Helm",
+        "Datadog",
+        "AWS (GuardDuty, Macie, Inspector, EC2, EBS)",
+        "GCP (Compute Engine, Cloud Run, Dataflow, BigQuery, GCS)",
+        "Morpheus",
+        "Security Monkey",
+        "CloudTracker",
+        "Terraform",
+        "Ansible",
+        "VMware"
+      ]
+    },
+    {
+      "project_title": "CI/CD & IaC Implementations",
+      "overview": "Implemented continuous delivery frameworks and automated infrastructure provisioning across environments using a mix of CI/CD tools and IaC solutions.",
+      "role": "DevOps Engineer",
+      "duration": "",
+      "responsibilities": [
+        "Implemented Continuous Delivery using Jenkins, Ansible, Maven and Nexus in Linux environments.",
+        "Built pipelines to deploy applications to AWS and integrated CI/CD across teams.",
+        "Used CloudFormation to automate AWS resource provisioning and invoked Puppet for server configuration.",
+        "Automated infrastructure provisioning with Terraform modules for staging and production.",
+        "Created Docker images and managed container lifecycle, snapshots, and volumes.",
+        "Configured SNS for notifications based on CloudFormation events.",
+        "Created and maintained hybrid Kubernetes clusters and their supporting components (storage, monitoring, logging)."
+      ],
+      "tech_stack": [
+        "Jenkins",
+        "Maven",
+        "Nexus",
+        "Ansible",
+        "CloudFormation",
+        "Puppet",
+        "Terraform",
+        "Docker",
+        "Kubernetes",
+        "SNS"
+      ]
+    }
+  ],
+  "skills_overview": [
+    {
+      "category": "Cloud",
+      "tool": "AWS",
+      "years_of_experience": "5+"
+    },
+    {
+      "category": "Professional Experience",
+      "tool": "DevOps / Infrastructure",
+      "years_of_experience": "8"
+    },
+    {
+      "category": "IaC",
+      "tool": "Terraform",
+      "years_of_experience": ""
+    },
+    {
+      "category": "IaC",
+      "tool": "Pulumi",
+      "years_of_experience": ""
+    },
+    {
+      "category": "Containers",
+      "tool": "Docker",
+      "years_of_experience": ""
+    },
+    {
+      "category": "Monitoring",
+      "tool": "Datadog",
+      "years_of_experience": ""
+    }
+  ],
+  "website": ""
+}

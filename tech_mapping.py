@@ -1,0 +1,136 @@
+TECH_MAPPING = {
+    # --- Programming Languages ---
+    r"\bpython\b": "programming_languages",
+    r"\b(java|java\s+se|java\s+ee)\b": "programming_languages",
+    r"\bc\+\+\b": "programming_languages",
+    r"\bc#\b": "programming_languages",
+    r"\bjavascript\b": "programming_languages",
+    r"\btypescript\b": "programming_languages",
+    r"\b(go|golang)\b": "programming_languages",
+    r"\brust\b": "programming_languages",
+    r"\bphp\b": "programming_languages",
+    r"\bruby\b": "programming_languages",
+    r"\bswift\b": "programming_languages",
+    r"\bkotlin\b": "programming_languages",
+    r"\bsql\b": "programming_languages",
+    r"\br\b": "programming_languages",
+    r"\bmatlab\b": "programming_languages",
+
+    # --- Backend Frameworks ---
+    r"\bdjango(\s+rest(\s+framework)?)?\b": "backend",
+    r"\bspring(\s+boot)?\b": "backend",
+    r"\bexpress(\.js)?\b": "backend",
+    r"\bnode(\.js)?\b": "backend",
+    r"\bflask\b": "backend",
+    r"\bfastapi\b": "backend",
+    r"\basp\.?net\b": "backend",
+    r"\blaravel\b": "backend",
+    r"\bruby\s+on\s+rails\b": "backend",
+
+    # --- Frontend ---
+    r"\breact(\.js)?\b": "frontend",
+    r"\bangular(\.js)?\b": "frontend",
+    r"\bvue(\.js)?\b": "frontend",
+    r"\bsvelte\b": "frontend",
+    r"\bjquery\b": "frontend",
+    r"\bbootstrap\b": "frontend",
+    r"\btailwind(\s+css)?\b": "frontend",
+    r"\bnext\.js\b": "frontend",
+
+    # --- Databases ---
+    r"\bmysql\b": "databases",
+    r"\b(postgres|postgresql)\b": "databases",
+    r"\bsqlite\b": "databases",
+    r"\boracle(\s+database)?\b": "databases",
+    r"\bmongodb\b": "databases",
+    r"\bredis\b": "databases",
+    r"\belasticsearch\b": "databases",
+    r"\bmariadb\b": "databases",
+    r"\bcassandra\b": "databases",
+    r"\bfirebase\b": "databases",
+    r"\bpgvector\b": "databases",
+
+    # --- AI / ML Tools ---
+    r"\bllama(index)?\b": "ai_ml_tools",
+    r"\bdeepface\b": "ai_ml_tools",
+    r"\b(openai\s+)?whisper\b": "ai_ml_tools",
+    r"\btensorflow\b": "ai_ml_tools",
+    r"\bkeras\b": "ai_ml_tools",
+    r"\bpytorch\b": "ai_ml_tools",
+    r"\bscikit-?learn\b": "ai_ml_tools",
+    r"\bpandas\b": "ai_ml_tools",
+    r"\bnumpy\b": "ai_ml_tools",
+    r"\bhugging\s*face\b": "ai_ml_tools",
+    r"\bopenai(\s+api)?\b": "ai_ml_tools",
+    r"\bvllm\b": "ai_ml_tools",
+    r"\bllm\b": "ai_ml_tools",
+
+    # --- DevOps / IaC ---
+    r"\bdocker\b": "devops_iac",
+    r"\bkubernetes\b": "devops_iac",
+    r"\bterraform\b": "devops_iac",
+    r"\bansible\b": "devops_iac",
+    r"\bpuppet\b": "devops_iac",
+    r"\bchef\b": "devops_iac",
+    r"\bhelm\b": "devops_iac",
+    r"\bvagrant\b": "devops_iac",
+
+    # --- Monitoring & Security (Ops) ---
+    r"\bprometheus\b": "monitoring_security",
+    r"\bgrafana\b": "monitoring_security",
+    r"\belk(\s+stack)?\b": "monitoring_security",
+    r"\bkibana\b": "monitoring_security",
+    r"\blogstash\b": "monitoring_security",
+    r"\bsentry\b": "monitoring_security",
+    r"\bazure\s+monitor\b": "monitoring_security",
+    r"\bdatadog\b": "monitoring_security",
+    r"\bnew\s+relic\b": "monitoring_security",
+
+    # --- Security (pure InfoSec) ---
+    r"\bkeycloak\b": "security",
+    r"\bokta\b": "security",
+    r"\boauth(\s*2(\.0)?)?\b": "security",
+    r"\bopenid\s+connect\b": "security",
+    r"\b(tls|ssl)\b": "security",
+    r"\bwaf\b": "security",
+    r"\bsiem\b": "security",
+    r"\bids\b": "security",
+    r"\bips\b": "security",
+    r"\bvault\b": "security",
+    r"\baes\b": "security",
+    r"\brsa\b": "security",
+    r"\bkerberos\b": "security",
+
+    # --- Cloud Platforms ---
+    r"\b(aws|amazon\s+web\s+services)\b": "cloud_platforms",
+    r"\b(microsoft\s+azure|azure)\b": "cloud_platforms",
+    r"\b(google\s+cloud(\s+platform)?|gcp)\b": "cloud_platforms",
+    r"\bibm\s+cloud\b": "cloud_platforms",
+    r"\boracle\s+cloud\b": "cloud_platforms",
+
+    # --- CI/CD Tools ---
+    r"\bjenkins\b": "ci_cd_tools",
+    r"\bgitlab\s+ci\b": "ci_cd_tools",
+    r"\bgithub\s+actions\b": "ci_cd_tools",
+    r"\bcircleci\b": "ci_cd_tools",
+    r"\btravis\s+ci\b": "ci_cd_tools",
+    r"\bteamcity\b": "ci_cd_tools",
+    r"\bbamboo\b": "ci_cd_tools",
+
+    # --- Containers & Orchestration ---
+    r"\bdocker\s+swarm\b": "containers_orchestration",
+    r"\bkubernetes\b": "containers_orchestration",
+    r"\bmesos\b": "containers_orchestration",
+    r"\bnomad\b": "containers_orchestration",
+
+    # --- Other Tools ---
+    r"\bgit\b": "other_tools",
+    r"\bgithub\b": "other_tools",
+    r"\bgitlab\b": "other_tools",
+    r"\bbitbucket\b": "other_tools",
+    r"\bjira\b": "other_tools",
+    r"\bconfluence\b": "other_tools",
+    r"\bslack\b": "other_tools",
+    r"\btrello\b": "other_tools",
+    r"\bnotion\b": "other_tools"
+}

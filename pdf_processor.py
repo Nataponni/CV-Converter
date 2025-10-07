@@ -1,31 +1,62 @@
-import pdfplumber
+import fitz  # PyMuPDF
+import re
 
-def extract_text_from_pdf(pdf_path, max_pages=None, max_chars=None):
+
+def extract_text_by_page(pdf_path):
     """
-    Extrahiert Text aus einer PDF-Datei mit optionalen Begrenzungen für Seiten und Zeichen.
-    
-    :param pdf_path: Pfad zur PDF-Datei
-    :param max_pages: maximale Anzahl an Seiten, die verarbeitet werden (Standard: alle)
-    :param max_chars: maximale Anzahl an Zeichen, die zurückgegeben werden (Standard: alles)
-    :return: extrahierter Text
+    Extracts text page-by-page from a PDF using PyMuPDF.
+    Returns list of strings (one per page).
     """
-    text = ""
-    with pdfplumber.open(pdf_path) as pdf:
-        pages = pdf.pages[:max_pages] if max_pages else pdf.pages
-        for page in pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
-
-    text = text.strip()
-    if max_chars:
-        text = text[:max_chars]  # Text kürzen, um Tokens zu sparen
-
-    return text
+    doc = fitz.open(pdf_path)
+    pages_text = [page.get_text().strip() for page in doc]
+    doc.close()
+    return pages_text
 
 
-# 🔹 Testlauf
-if __name__ == "__main__":
-    text = extract_text_from_pdf("data_input/CV_Kunde_1.pdf", max_pages=1, max_chars=500)
-    print("📄 Extrahierter Text aus PDF:\n")
-    print(text)
+def clean_text(text):
+    """
+    Normalize and tag known sections like [DOMAINS], [EDUCATION], etc.
+    """
+    # Remove indexes like [1], (2)
+    text = re.sub(r"\[\d+\]", "", text)
+    text = re.sub(r"\(\d+\)", "", text)
+
+    # Remove excessive whitespace
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\s{2,}", " ", text)
+
+    # Add section markers without removing original titles
+    section_markers = {
+        r"(?i)(?<=\n)(Domains:?)": "[DOMAINS]",
+        r"(?i)(Languages:?)": "[LANGUAGES]",
+        r"(?i)(Education:?)": "[EDUCATION]",
+        r"(?i)(Profile|Summary|About Me|Professional Summary)": "[PROFILE_SUMMARY]",
+        r"(?i)(Projects:?)": "[PROJECTS]",
+        r"(?i)(Skills|Professional skills|Technical skills):?": "[SKILLS]",
+    }
+
+    for pattern, marker in section_markers.items():
+        text = re.sub(pattern, f"\n{marker}\n\\1", text)
+
+    # Add closing tags for cleaner block extraction
+    text = re.sub(r"\[DOMAINS\](.*?)\n(?=\[|\Z)", r"[DOMAINS]\1[/DOMAINS]\n", text, flags=re.DOTALL)
+    text = re.sub(r"\[SKILLS\](.*?)\n(?=\[|\Z)", r"[SKILLS]\1[/SKILLS]\n", text, flags=re.DOTALL)
+    text = re.sub(r"\[LANGUAGES\](.*?)\n(?=\[|\Z)", r"[LANGUAGES]\1[/LANGUAGES]\n", text, flags=re.DOTALL)
+    text = re.sub(r"\[EDUCATION\](.*?)\n(?=\[|\Z)", r"[EDUCATION]\1[/EDUCATION]\n", text, flags=re.DOTALL)
+    text = re.sub(r"\[PROJECTS\](.*?)\n(?=\[|\Z)", r"[PROJECTS]\1[/PROJECTS]\n", text, flags=re.DOTALL)
+    text = re.sub(r"\[PROFILE_SUMMARY\](.*?)\n(?=\[|\Z)", r"[PROFILE_SUMMARY]\1[/PROFILE_SUMMARY]\n", text, flags=re.DOTALL)
+
+    return text.strip()
+
+
+def extract_domains_from_text(text):
+    """
+    Extract exact values inside [DOMAINS] ... [/DOMAINS]
+    """
+    match = re.search(r"\[DOMAINS\](.*?)\[/DOMAINS\]", text, re.DOTALL)
+    if not match:
+        return []
+    lines = match.group(1).split("\n")
+    return [line.strip() for line in lines if line.strip()]
+
+

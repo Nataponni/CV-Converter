@@ -1,115 +1,226 @@
 {
   "full_name": "Adebayo Adeyeye",
-  "title": "",
-  "education": "",
-  "languages": [],
-  "domains": [
-    "IT Support (tier 1/2/3)",
-    "Cloud Services",
-    "Environment Architecture",
-    "Deployment",
-    "Monitoring",
-    "DevOps"
+  "title": "Senior DevOps Engineer",
+  "education": "Landmark University, Nigeria. B.Sc. Accounting Oct 2011 - July 2015",
+  "languages": [
+    {
+      "language": "English",
+      "level": "Fluent"
+    }
   ],
-  "profile_summary": "Well-rounded professional with relevant experience in IT industry comprising of tier 1,2 and 3 support, AWS cloud services, environment architecting, deployment, and monitoring. Relevant experience navigating moderate to complex technical environments and finding strategic solutions to individual project needs.",
+  "domains": [
+    "Cloud",
+    "DevOps",
+    "Infrastructure",
+    "CI/CD",
+    "Containers",
+    "Kubernetes",
+    "Monitoring",
+    "Security",
+    "Automation",
+    "Web Application Operations"
+  ],
+  "profile_summary": "Well-rounded IT professional with ~8 years of experience across tier 1-3 support, cloud services, environment architecting, deployment and monitoring. 5+ years hands-on AWS experience, experienced in designing and operating infrastructure-as-code (Terraform, Pulumi, CloudFormation), containerization (Docker, ECS, AKS), CI/CD pipelines (Jenkins, Azure DevOps, GitLab CI), and observability (Datadog, CloudWatch). Strong background in cloud security (WAF, GuardDuty, IAM) and database administration (Postgres, MySQL).",
   "hard_skills": {
-    "backend": [
-      "NodeJs",
-      "EC2",
-      "RDS"
-    ],
-    "frontend": [
-      "ReactJs",
-      "jQuery",
-      "HTML",
-      "CSS"
-    ],
-    "devops": [
-      "Pulumi",
-      "Terraform",
-      "AWS CDK",
-      "Ansible"
-    ],
-    "programming_languages": [
-      "Bash",
-      "NodeJs",
-      "JavaScript",
-      "HTML",
-      "CSS"
-    ],
-    "frameworks": [
-      "ReactJs",
-      "jQuery"
-    ],
-    "databases": [
-      "RDS"
-    ],
     "cloud_platforms": [
       "AWS",
-      "GCP",
-      "Digital Ocean",
-      "Azure"
+      "AWS CDK",
+      "AWS Config",
+      "AWS Inspector",
+      "AWS Network Firewall",
+      "AWS Shield",
+      "Azure",
+      "Azure DevOps Pipelines",
+      "GCP"
     ],
-    "ai_ml_tools": [],
+    "devops_iac": [
+      "Ansible",
+      "Docker",
+      "Helm",
+      "Terraform"
+    ],
     "monitoring_security": [
-      "CloudWatch",
-      "CloudTrail",
-      "GuardDuty",
-      "WAF",
-      "Shield",
-      "Snyk"
+      "Datadog",
+      "Grafana",
+      "Prometheus"
+    ],
+    "programming_languages": [
+      "JavaScript",
+      "TypeScript"
     ],
     "containers_orchestration": [
-      "ECS",
       "Kubernetes"
     ],
     "ci_cd_tools": [
-      "CloudFormation"
+      "GitLab CI/CD",
+      "Jenkins"
     ],
+    "databases": [
+      "MongoDB",
+      "MySQL",
+      "PostgreSQL"
+    ],
+    "backend": [
+      "Node.js"
+    ],
+    "frontend": [
+      "jQuery"
+    ],
+    "security": [
+      "WAF"
+    ],
+    "ai_ml_tools": [],
     "other_tools": [
-      "IAM",
-      "S3",
-      "VPC",
-      "Route53",
-      "SNS",
-      "SQS"
+      "AKS",
+      "API Gateway",
+      "ARM templates",
+      "Apache",
+      "Bash",
+      "Bicep",
+      "CSS",
+      "CloudFormation",
+      "CloudTracker",
+      "CloudWatch",
+      "Digital Ocean",
+      "EBS",
+      "ECS",
+      "ELB",
+      "Elastic Beanstalk",
+      "Git",
+      "GitHub",
+      "GuardDuty",
+      "HTML",
+      "Kustomize",
+      "Macie",
+      "Maven",
+      "Microservices",
+      "Morpheus",
+      "Nexus",
+      "Nginx",
+      "Pulumi",
+      "ReactJs",
+      "Security Groups / NACL",
+      "Security Monkey",
+      "Snyk",
+      "Splunk",
+      "VMware"
     ]
   },
-  "projects": [
+  "projects_experience": [
     {
-      "project_title": "",
-      "overview": "",
-      "role": "",
-      "duration": "",
-      "responsibilities": [],
-      "tech_stack": []
+      "project_title": "Datadog APM and Infrastructure Monitoring Implementation",
+      "overview": "Implemented Datadog APM and infrastructure monitoring to visualize performance metrics, configure alerts, and reduce MTTR across services.",
+      "role": "Senior DevOps Engineer",
+      "duration": "May 2020 – August 2025 (Accenture tenure)",
+      "responsibilities": [
+        "Designed and deployed Datadog dashboards and alerts for applications and infrastructure.",
+        "Integrated Datadog APM for microservices to track performance and latency.",
+        "Configured infrastructure monitoring and automated alerts to reduce mean time to recovery by 40%.",
+        "Collaborated with Cloud Ops and development teams to tune monitoring and incident response."
+      ],
+      "tech_stack": [
+        "Datadog",
+        "AWS (EC2, ECS, CloudWatch)",
+        "Kubernetes",
+        "Helm",
+        "Terraform",
+        "Ansible"
+      ]
+    },
+    {
+      "project_title": "Continuous Delivery Framework and CI/CD Pipelines",
+      "overview": "Built and maintained CI/CD pipelines and continuous delivery frameworks to automate build, test and deployment processes for multiple applications.",
+      "role": "DevOps / Cloud DevOps Engineer",
+      "duration": "Multiple engagements across 2015 – 2025",
+      "responsibilities": [
+        "Implemented Continuous Delivery using Jenkins, Ansible, Maven and Nexus in Linux environments.",
+        "Built pipelines in AWS to deploy applications and integrated CI/CD across GitLab/GitHub/Azure DevOps.",
+        "Implemented gated approvals, artifact promotion and automated rollback strategies in Azure DevOps YAML pipelines."
+      ],
+      "tech_stack": [
+        "Jenkins",
+        "Azure DevOps Pipelines",
+        "GitLab CI/CD",
+        "Maven",
+        "Nexus",
+        "Ansible",
+        "AWS"
+      ]
+    },
+    {
+      "project_title": "Infrastructure-as-Code and Kubernetes Deployments",
+      "overview": "Automated provisioning and deployment of staging and production cloud infrastructure using IaC and deployed containerized workloads to managed Kubernetes and ECS.",
+      "role": "Cloud DevOps Engineer",
+      "duration": "September 2015 – August 2025 (across Access Bank and Accenture roles)",
+      "responsibilities": [
+        "Developed and managed Terraform modules and CloudFormation templates for repeatable deployments.",
+        "Used Pulumi (TypeScript) to define and deploy cloud infrastructure across Azure and AWS.",
+        "Created Docker images and managed Kubernetes/AKS/ECS deployments using Helm charts and Kustomize.",
+        "Provisioned hybrid Kubernetes clusters and managed storage, logging and monitoring integrations."
+      ],
+      "tech_stack": [
+        "Terraform",
+        "Pulumi",
+        "CloudFormation",
+        "Docker",
+        "Kubernetes",
+        "AKS",
+        "ECS",
+        "Helm",
+        "TypeScript"
+      ]
     }
   ],
   "skills_overview": [
     {
-      "category": "Cloud Platforms",
-      "tool": "AWS, GCP, Digital Ocean, Azure",
-      "years_of_experience": ""
+      "category": "Cloud",
+      "tool": "AWS",
+      "years_of_experience": "5"
     },
     {
-      "category": "Infrastructure as Code / DevOps",
-      "tool": "Pulumi, Terraform, AWS CDK, Ansible, CloudFormation",
-      "years_of_experience": ""
+      "category": "IaC",
+      "tool": "Terraform",
+      "years_of_experience": "4"
     },
     {
-      "category": "Containers & Orchestration",
-      "tool": "ECS, Kubernetes",
-      "years_of_experience": ""
+      "category": "Containerization",
+      "tool": "Docker",
+      "years_of_experience": "5"
     },
     {
-      "category": "Programming / Scripting",
-      "tool": "Bash, NodeJs, JavaScript, HTML, CSS",
-      "years_of_experience": ""
+      "category": "Orchestration",
+      "tool": "Kubernetes / AKS",
+      "years_of_experience": "2"
     },
     {
-      "category": "Monitoring & Security",
-      "tool": "CloudWatch, CloudTrail, GuardDuty, WAF, Shield, Snyk",
-      "years_of_experience": ""
+      "category": "Monitoring",
+      "tool": "Datadog",
+      "years_of_experience": "3"
+    },
+    {
+      "category": "CI/CD",
+      "tool": "Jenkins",
+      "years_of_experience": "4"
+    },
+    {
+      "category": "Scripting",
+      "tool": "Bash",
+      "years_of_experience": "5"
+    },
+    {
+      "category": "Configuration Management",
+      "tool": "Ansible",
+      "years_of_experience": "4"
+    },
+    {
+      "category": "Cloud Automation",
+      "tool": "Pulumi (TypeScript)",
+      "years_of_experience": "3"
+    },
+    {
+      "category": "Databases",
+      "tool": "PostgreSQL",
+      "years_of_experience": "3"
     }
   ],
   "website": ""
