@@ -4,8 +4,8 @@ from tech_mapping import TECH_MAPPING
 def remap_hard_skills(hard_skills_from_gpt):
     """
     Vereinheitlicht die Struktur von 'hard_skills':
-    - Extrahiert alle Tool-Namen aus der Eingabe (z. B. [{"name": "...", "years_experience": ...}])
-    - Ordnet sie den Kategorien aus TECH_MAPPING zu
+    - Beibehaltung von 'name' und 'years_experience' aus der GPT-Ausgabe
+    - Ordnet Tools anhand von TECH_MAPPING Kategorien zu
     - Entfernt Duplikate und bereinigt leere Einträge
     """
     mapped_skills = {
@@ -23,41 +23,53 @@ def remap_hard_skills(hard_skills_from_gpt):
         "other_tools": []
     }
 
-    all_tools = set()
-
-    # 1️⃣ Alle Tool-Namen aus den GPT-Ergebnissen sammeln
-    for tools in hard_skills_from_gpt.values():
+    # Jedes Tool prüfen und zuordnen
+    for category, tools in hard_skills_from_gpt.items():
         for item in tools:
             if isinstance(item, dict):
                 name = item.get("name", "").strip()
+                years = item.get("years_experience", 0)
             else:
                 name = str(item).strip()
-            if name:
-                all_tools.add(name)
+                years = 0
 
-    # 2️⃣ Jedes Tool mithilfe von TECH_MAPPING einer Kategorie zuordnen
-    for tool in all_tools:
-        matched = False
-        for pattern, category in TECH_MAPPING.items():
-            if re.search(pattern, tool.lower()):
-                mapped_skills[category].append(tool)
-                matched = True
-                break
-        # Wenn kein Pattern übereinstimmt → unter "other_tools" speichern
-        if not matched:
-            mapped_skills["other_tools"].append(tool)
+            if not name:
+                continue
 
-    # 3️⃣ Doppelte Einträge entfernen und alphabetisch sortieren
-    for category in mapped_skills:
-        mapped_skills[category] = sorted(list(set(mapped_skills[category])))
+            # Kategorie durch TECH_MAPPING prüfen
+            matched = False
+            for pattern, mapped_category in TECH_MAPPING.items():
+                if re.search(pattern, name.lower()):
+                    mapped_skills[mapped_category].append({
+                        "name": name,
+                        "years_experience": years
+                    })
+                    matched = True
+                    break
+
+            if not matched:
+                mapped_skills["other_tools"].append({
+                    "name": name,
+                    "years_experience": years
+                })
+
+    # Duplikate entfernen
+    for cat in mapped_skills:
+        unique = []
+        seen = set()
+        for t in mapped_skills[cat]:
+            key = t["name"].lower()
+            if key not in seen:
+                seen.add(key)
+                unique.append(t)
+        mapped_skills[cat] = unique
 
     return mapped_skills
-
 
 if __name__ == "__main__":
     import json
     # Testmodus: vorhandene JSON-Datei einlesen
-    with open("data_output/result_1.json", "r", encoding="utf-8") as f:
+    with open("data_output/result_2.json", "r", encoding="utf-8") as f:
         data = json.load(f)
 
     original_skills = data.get("hard_skills", {})
