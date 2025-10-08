@@ -30,44 +30,25 @@ SCHEMA:
   "languages": [{{"language": "", "level": ""}}],
   "domains": [],
   "profile_summary": "",
-"hard_skills": {{
-  "cloud_platforms": [
-    {{ "name": "", "years_experience": 0 }}
-  ],
-  "devops_iac": [
-    {{ "name": "", "years_experience": 0 }}
-  ],
-  "monitoring_security": [
-    {{ "name": "", "years_experience": 0 }}
-  ],
-  "programming_languages": [
-    {{ "name": "", "years_experience": 0 }}
-  ],
-  "containers_orchestration": [
-    {{ "name": "", "years_experience": 0 }}
-  ],
-  "ci_cd_tools": [
-    {{ "name": "", "years_experience": 0 }}
-  ],
-  "ai_ml_tools": [
-    {{ "name": "", "years_experience": 0 }}
-  ],
-  "databases": [
-    {{ "name": "", "years_experience": 0 }}
-  ],
-  "backend": [
-    {{ "name": "", "years_experience": 0 }}
-  ],
-  "frontend": [
-    {{ "name": "", "years_experience": 0 }}
-  ],
-  "security": [
-    {{ "name": "", "years_experience": 0 }}
-  ],
-  "other_tools": [
-    {{ "name": "", "years_experience": 0 }}
-  ]
-}},
+  "hard_skills": {{
+    "programming_languages": [{{"name": "", "years_experience": 0}}],
+    "backend": [{{"name": "", "years_experience": 0}}],
+    "frontend": [{{"name": "", "years_experience": 0}}],
+    "databases": [{{"name": "", "years_experience": 0}}],
+    "data_engineering": [{{"name": "", "years_experience": 0}}],
+    "etl_tools": [{{"name": "", "years_experience": 0}}],
+    "bi_tools": [{{"name": "", "years_experience": 0}}],
+    "analytics": [{{"name": "", "years_experience": 0}}],
+    "cloud_platforms": [{{"name": "", "years_experience": 0}}],
+    "devops_iac": [{{"name": "", "years_experience": 0}}],
+    "ci_cd_tools": [{{"name": "", "years_experience": 0}}],
+    "containers_orchestration": [{{"name": "", "years_experience": 0}}],
+    "monitoring_security": [{{"name": "", "years_experience": 0}}],
+    "security": [{{"name": "", "years_experience": 0}}],
+    "ai_ml_tools": [{{"name": "", "years_experience": 0}}],
+    "infrastructure_os": [{{"name": "", "years_experience": 0}}],
+    "other_tools": [{{"name": "", "years_experience": 0}}]
+  }},
   "projects_experience": [
     {{
       "project_title": "",
@@ -91,7 +72,6 @@ SCHEMA:
 TEXT:
 {text}
 """
-
     response = client.chat.completions.create(
         model="gpt-5-mini", 
         response_format={"type": "json_object"},

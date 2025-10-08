@@ -48,6 +48,29 @@ def clean_text(text):
 
     return text.strip()
 
+def clean_responsibilities(responsibilities, max_words=12):
+    """
+    Kürzt und bereinigt die 'responsibilities'-Liste.
+    Lange Sätze werden abgeschnitten, aber so,
+    dass der Sinn nicht komplett verloren geht.
+    """
+    cleaned = []
+    for resp in responsibilities:
+        # убираем пробелы и точки в конце
+        resp = resp.strip().rstrip(".;:")
+
+        # делим на слова
+        words = resp.split()
+
+        if len(words) > max_words:
+            # берём первые max_words слов и добавляем "..."
+            short = " ".join(words[:max_words]) + "..."
+            cleaned.append(short)
+        else:
+            cleaned.append(resp)
+
+    return cleaned
+
 
 def extract_domains_from_text(text):
     """

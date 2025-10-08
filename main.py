@@ -2,7 +2,7 @@ import os
 import re
 import time
 
-from pdf_processor import extract_text_by_page, clean_text
+from pdf_processor import extract_text_by_page, clean_text, clean_responsibilities
 from chatgpt_client import ask_chatgpt
 from utils import save_json, has_empty_fields
 from fill_cv import fill_missing_fields
@@ -77,6 +77,14 @@ def main():
 
     # 5️⃣ Profiltext kürzen und bereinigen
     result["profile_summary"] = shorten_profile_summary(result.get("profile_summary", ""))
+    
+    # 5b️ Responsibilities kürzen/vereinfachen
+    for project in result.get("projects_experience", []):
+        if "responsibilities" in project:
+            project["responsibilities"] = clean_responsibilities(
+                project["responsibilities"],
+                max_words=12
+            )
 
     # 6️⃣ Fehlende Felder auffüllen, falls vorhanden
     if has_empty_fields(result):

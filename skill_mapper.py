@@ -11,17 +11,24 @@ def remap_hard_skills(hard_skills_from_gpt):
     mapped_skills = {
         "cloud_platforms": [],
         "devops_iac": [],
-        "monitoring_security": [],
-        "programming_languages": [],
-        "containers_orchestration": [],
         "ci_cd_tools": [],
+        "containers_orchestration": [],
+        "programming_languages": [],
         "databases": [],
         "backend": [],
         "frontend": [],
-        "security": [],
+        "data_engineering": [],
+        "etl_tools": [],
+        "analytics_bi": [],
+        "testing_tools": [],
+        "monitoring_security": [],
+        "version_control": [],
         "ai_ml_tools": [],
+        "security": [],
+        "infrastructure": [],
         "other_tools": []
     }
+
 
     # Jedes Tool prüfen und zuordnen
     for category, tools in hard_skills_from_gpt.items():

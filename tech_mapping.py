@@ -1,136 +1,315 @@
+# tech_mapping.py
+# Полный маппинг технологий + тест с выводом в PDF
+
+import re
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
+)
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
+from pprint import pprint
+
+
+# ===== РЕГИСТРАЦИЯ ШРИФТОВ =====
+pdfmetrics.registerFont(TTFont("Roboto", "fonts/Roboto-Regular.ttf"))
+pdfmetrics.registerFont(TTFont("Roboto-Bold", "fonts/Roboto-Bold.ttf"))
+BASE_FONT = "Roboto"
+BOLD_FONT = "Roboto-Bold"
+
+
+# ===== МАППИНГ =====
 TECH_MAPPING = {
-    # --- Programming Languages ---
-    r"\bpython\b": "programming_languages",
-    r"\b(java|java\s+se|java\s+ee)\b": "programming_languages",
-    r"\bc\+\+\b": "programming_languages",
-    r"\bc#\b": "programming_languages",
-    r"\bjavascript\b": "programming_languages",
-    r"\btypescript\b": "programming_languages",
-    r"\b(go|golang)\b": "programming_languages",
-    r"\brust\b": "programming_languages",
-    r"\bphp\b": "programming_languages",
-    r"\bruby\b": "programming_languages",
-    r"\bswift\b": "programming_languages",
-    r"\bkotlin\b": "programming_languages",
-    r"\bsql\b": "programming_languages",
-    r"\br\b": "programming_languages",
-    r"\bmatlab\b": "programming_languages",
+    # ===== Programming Languages =====
+    r"(?i)\bpython\b": "programming_languages",
+    r"(?i)\bjavascript\b": "programming_languages",
+    r"(?i)\btypescript\b": "programming_languages",
+    r"(?i)\bsql\b": "programming_languages",
+    r"(?i)\bbash\b": "programming_languages",
+    r"(?i)\bnode(\.js)?\b": "programming_languages",
+    r"(?i)\bjava\b": "programming_languages",
+    r"(?i)\bgo(lang)?\b": "programming_languages",
+    r"(?i)\bc\+\+\b": "programming_languages",
+    r"(?i)\bc#\b": "programming_languages",
+    r"(?i)\bruby\b": "programming_languages",
+    r"(?i)\bscala\b": "programming_languages",
+    r"(?i)\br\b": "programming_languages",
 
-    # --- Backend Frameworks ---
-    r"\bdjango(\s+rest(\s+framework)?)?\b": "backend",
-    r"\bspring(\s+boot)?\b": "backend",
-    r"\bexpress(\.js)?\b": "backend",
-    r"\bnode(\.js)?\b": "backend",
-    r"\bflask\b": "backend",
-    r"\bfastapi\b": "backend",
-    r"\basp\.?net\b": "backend",
-    r"\blaravel\b": "backend",
-    r"\bruby\s+on\s+rails\b": "backend",
+    # ===== Backend =====
+    r"(?i)\bdjango(\s*/\s*django\s*rest|\s+rest(\s+framework)?)?\b": "backend",
+    r"(?i)\bfastapi\b": "backend",
+    r"(?i)\bflask\b": "backend",
+    r"(?i)\bcelery\b": "backend",
+    r"(?i)\bsqlalchemy\b": "backend",
+    r"(?i)\baiohttp\b": "backend",
+    r"(?i)\bmicroservices?\b": "backend",
+    r"(?i)\bapi\b": "backend",
 
-    # --- Frontend ---
-    r"\breact(\.js)?\b": "frontend",
-    r"\bangular(\.js)?\b": "frontend",
-    r"\bvue(\.js)?\b": "frontend",
-    r"\bsvelte\b": "frontend",
-    r"\bjquery\b": "frontend",
-    r"\bbootstrap\b": "frontend",
-    r"\btailwind(\s+css)?\b": "frontend",
-    r"\bnext\.js\b": "frontend",
+    # ===== Frontend =====
+    r"(?i)\breact(\.js)?\b": "frontend",
+    r"(?i)\bnext(\.js)?\b": "frontend",
+    r"(?i)\bredux\b": "frontend",
+    r"(?i)\bvue(\.js)?\b": "frontend",
+    r"(?i)\bangular\b": "frontend",
+    r"(?i)\bhtml\b": "frontend",
+    r"(?i)\bcss\b": "frontend",
+    r"(?i)\bscss\b": "frontend",
+    r"(?i)\bmaterial\s*ui\b": "frontend",
+    r"(?i)\bant\s*design\b": "frontend",
 
-    # --- Databases ---
-    r"\bmysql\b": "databases",
-    r"\b(postgres|postgresql)\b": "databases",
-    r"\bsqlite\b": "databases",
-    r"\boracle(\s+database)?\b": "databases",
-    r"\bmongodb\b": "databases",
-    r"\bredis\b": "databases",
-    r"\belasticsearch\b": "databases",
-    r"\bmariadb\b": "databases",
-    r"\bcassandra\b": "databases",
-    r"\bfirebase\b": "databases",
-    r"\bpgvector\b": "databases",
+    # ===== Databases =====
+    r"(?i)\b(postgres|postgresql)\b": "databases",
+    r"(?i)\bmysql\b": "databases",
+    r"(?i)\bredis\b": "databases",
+    r"(?i)\bmongodb\b": "databases",
+    r"(?i)\belasticsearch\b": "databases",
+    r"(?i)\bsnowflake\b": "databases",
+    r"(?i)\bsql\s*server\b": "databases",
+    r"(?i)\boracle\b": "databases",
+    r"(?i)\bcassandra\b": "databases",
+    r"(?i)\bbigquery\b": "databases",
 
-    # --- AI / ML Tools ---
-    r"\bllama(index)?\b": "ai_ml_tools",
-    r"\bdeepface\b": "ai_ml_tools",
-    r"\b(openai\s+)?whisper\b": "ai_ml_tools",
-    r"\btensorflow\b": "ai_ml_tools",
-    r"\bkeras\b": "ai_ml_tools",
-    r"\bpytorch\b": "ai_ml_tools",
-    r"\bscikit-?learn\b": "ai_ml_tools",
-    r"\bpandas\b": "ai_ml_tools",
-    r"\bnumpy\b": "ai_ml_tools",
-    r"\bhugging\s*face\b": "ai_ml_tools",
-    r"\bopenai(\s+api)?\b": "ai_ml_tools",
-    r"\bvllm\b": "ai_ml_tools",
-    r"\bllm\b": "ai_ml_tools",
+    # ===== Data Engineering =====
+    r"(?i)\bazure\s+(data\s+factory|synapse|data\s+lake|databricks)\b": "data_engineering",
+    r"(?i)\bspark\b": "data_engineering",
+    r"(?i)\bdatabricks\b": "data_engineering",
+    r"(?i)\bkafka\b": "data_engineering",
+    r"(?i)\bairflow\b": "data_engineering",
 
-    # --- DevOps / IaC ---
-    r"\bdocker\b": "devops_iac",
-    r"\bkubernetes\b": "devops_iac",
-    r"\bterraform\b": "devops_iac",
-    r"\bansible\b": "devops_iac",
-    r"\bpuppet\b": "devops_iac",
-    r"\bchef\b": "devops_iac",
-    r"\bhelm\b": "devops_iac",
-    r"\bvagrant\b": "devops_iac",
+    # ===== ETL Tools =====
+    r"(?i)\btalend\b": "etl_tools",
+    r"(?i)\bssis\b": "etl_tools",
+    r"(?i)\binformatica\b": "etl_tools",
+    r"(?i)\bdata\s*stage\b": "etl_tools",
 
-    # --- Monitoring & Security (Ops) ---
-    r"\bprometheus\b": "monitoring_security",
-    r"\bgrafana\b": "monitoring_security",
-    r"\belk(\s+stack)?\b": "monitoring_security",
-    r"\bkibana\b": "monitoring_security",
-    r"\blogstash\b": "monitoring_security",
-    r"\bsentry\b": "monitoring_security",
-    r"\bazure\s+monitor\b": "monitoring_security",
-    r"\bdatadog\b": "monitoring_security",
-    r"\bnew\s+relic\b": "monitoring_security",
+    # ===== BI Tools / Analytics =====
+    r"(?i)\bpower\s*bi\b": "bi_tools",
+    r"(?i)\btableau\b": "bi_tools",
+    r"(?i)\bqlik\b": "bi_tools",
+    r"(?i)\bdax\b": "bi_tools",
+    r"(?i)\bssrs\b": "bi_tools",
+    r"(?i)\bsas\s*viya\b": "bi_tools",
 
-    # --- Security (pure InfoSec) ---
-    r"\bkeycloak\b": "security",
-    r"\bokta\b": "security",
-    r"\boauth(\s*2(\.0)?)?\b": "security",
-    r"\bopenid\s+connect\b": "security",
-    r"\b(tls|ssl)\b": "security",
-    r"\bwaf\b": "security",
-    r"\bsiem\b": "security",
-    r"\bids\b": "security",
-    r"\bips\b": "security",
-    r"\bvault\b": "security",
-    r"\baes\b": "security",
-    r"\brsa\b": "security",
-    r"\bkerberos\b": "security",
+    r"(?i)\bpandas\b": "analytics",
+    r"(?i)\bnumpy\b": "analytics",
+    r"(?i)\bscikit(-|\s*)learn\b": "analytics",
 
-    # --- Cloud Platforms ---
-    r"\b(aws|amazon\s+web\s+services)\b": "cloud_platforms",
-    r"\b(microsoft\s+azure|azure)\b": "cloud_platforms",
-    r"\b(google\s+cloud(\s+platform)?|gcp)\b": "cloud_platforms",
-    r"\bibm\s+cloud\b": "cloud_platforms",
-    r"\boracle\s+cloud\b": "cloud_platforms",
+    # ===== Cloud Platforms =====
+    r"(?i)\baws\b": "cloud_platforms",
+    r"(?i)\bazure(?!\s*(devops|pipelines?))\b": "cloud_platforms",
+    r"(?i)\bgoogle\s*cloud\b": "cloud_platforms",
+    r"(?i)\bgcp\b": "cloud_platforms",
+    r"(?i)\bdigital\s*ocean\b": "cloud_platforms",
+    r"(?i)\bheroku\b": "cloud_platforms",
+    r"(?i)\blinode\b": "cloud_platforms",
+    r"(?i)\bazure\s+(app\s*services?|functions?)\b": "cloud_platforms",
 
-    # --- CI/CD Tools ---
-    r"\bjenkins\b": "ci_cd_tools",
-    r"\bgitlab\s+ci\b": "ci_cd_tools",
-    r"\bgithub\s+actions\b": "ci_cd_tools",
-    r"\bcircleci\b": "ci_cd_tools",
-    r"\btravis\s+ci\b": "ci_cd_tools",
-    r"\bteamcity\b": "ci_cd_tools",
-    r"\bbamboo\b": "ci_cd_tools",
+    # ===== DevOps / IaC =====
+    r"(?i)\bterraform\b": "devops_iac",
+    r"(?i)\bpulumi\b": "devops_iac",
+    r"(?i)\bansible\b": "devops_iac",
+    r"(?i)\bcloudformation\b": "devops_iac",
+    r"(?i)\barm\s*templates?\b": "devops_iac",
+    r"(?i)\bbicep\b": "devops_iac",
+    r"(?i)\bvagrant\b": "devops_iac",
 
-    # --- Containers & Orchestration ---
-    r"\bdocker\s+swarm\b": "containers_orchestration",
-    r"\bkubernetes\b": "containers_orchestration",
-    r"\bmesos\b": "containers_orchestration",
-    r"\bnomad\b": "containers_orchestration",
+    # ===== CI/CD Tools =====
+    r"(?i)\bjenkins\b": "ci_cd_tools",
+    r"(?i)\bgitlab\s*(ci/?cd)?\b": "ci_cd_tools",
+    r"(?i)\bgithub\s*(actions?)?\b": "ci_cd_tools",
+    r"(?i)\bbitbucket\s*(pipelines?)?\b": "ci_cd_tools",
+    r"(?i)\bmaven\b": "ci_cd_tools",
+    r"(?i)\bnexus\b": "ci_cd_tools",
+    r"(?i)\bteamcity\b": "ci_cd_tools",
+    r"(?i)\bcircleci\b": "ci_cd_tools",
+    r"(?i)\btravis\b": "ci_cd_tools",
+    r"(?i)\bazure\s*(devops|pipelines?)\b": "ci_cd_tools",
 
-    # --- Other Tools ---
-    r"\bgit\b": "other_tools",
-    r"\bgithub\b": "other_tools",
-    r"\bgitlab\b": "other_tools",
-    r"\bbitbucket\b": "other_tools",
-    r"\bjira\b": "other_tools",
-    r"\bconfluence\b": "other_tools",
-    r"\bslack\b": "other_tools",
-    r"\btrello\b": "other_tools",
-    r"\bnotion\b": "other_tools"
+    # ===== Containers & Orchestration =====
+    r"(?i)\bdocker(\s*compose)?\b": "containers_orchestration",
+    r"(?i)\bkubernetes\b": "containers_orchestration",
+    r"(?i)\bhelm\b": "containers_orchestration",
+    r"(?i)\bkustomize\b": "containers_orchestration",
+    r"(?i)\baks\b": "containers_orchestration",
+    r"(?i)\beks\b": "containers_orchestration",
+    r"(?i)\bgke\b": "containers_orchestration",
+
+    # ===== Monitoring & Security =====
+    r"(?i)\bprometheus\b": "monitoring_security",
+    r"(?i)\bgrafana\b": "monitoring_security",
+    r"(?i)\bdatadog\b": "monitoring_security",
+    r"(?i)\bsplunk\b": "monitoring_security",
+    r"(?i)\bcloudwatch\b": "monitoring_security",
+    r"(?i)\bcloudtrail\b": "monitoring_security",
+    r"(?i)\bsentry\b": "monitoring_security",
+    r"(?i)\bazure\s+(monitor|application\s+insights|log\s+analytics)\b": "monitoring_security",
+    r"(?i)\blogstash\b": "monitoring_security",
+    r"(?i)\bkibana\b": "monitoring_security",
+
+    # ===== Security =====
+    r"(?i)\biam\b": "security",
+    r"(?i)\bwaf\b": "security",
+    r"(?i)\bguard(duty)?\b": "security",
+    r"(?i)\bsnyk\b": "security",
+    r"(?i)\bazure\s+(active\s+directory|key\s+vault)\b": "security",
+    r"(?i)\brbac\b": "security",
+
+    # ===== AI & ML Tools =====
+    r"(?i)\bopenai\b": "ai_ml_tools",
+    r"(?i)\blangchain\b": "ai_ml_tools",
+    r"(?i)\bpytorch\b": "ai_ml_tools",
+    r"(?i)\btensorflow\b": "ai_ml_tools",
+    r"(?i)\bkeras\b": "ai_ml_tools",
+    r"(?i)\bllm\b": "ai_ml_tools",
+    r"(?i)\bwhisper\b": "ai_ml_tools",
+    r"(?i)\bllama(index|dex)?\b": "ai_ml_tools",
+
+    # ===== Infrastructure / Operating Systems =====
+    r"(?i)\bwindows\s*server\b": "infrastructure_os",
+    r"(?i)\blinux\b": "infrastructure_os",
+    r"(?i)\bubuntu\b": "infrastructure_os",
+    r"(?i)\bred\s*hat\b": "infrastructure_os",
+    r"(?i)\bcentos\b": "infrastructure_os",
+    r"(?i)\bvmware\b": "infrastructure_os",
+    r"(?i)\bhyper[-\s]*v\b": "infrastructure_os",
+    r"(?i)\biis\b": "infrastructure_os",
+
+    # ===== Other Tools =====
+    r"(?i)\bgit\b": "other_tools",
+    r"(?i)\bnginx\b": "other_tools",
+    r"(?i)\blinux\b": "other_tools",
+    r"(?i)\bvmware\b": "other_tools",
+    r"(?i)\bwindows\s*server\b": "other_tools",
+    r"(?i)\bred\s*hat\b": "other_tools",
+    r"(?i)\bcentos\b": "other_tools",
 }
+
+
+
+# ===== ТЕСТ И ВЫВОД В PDF =====
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, KeepTogether, PageBreak
+)
+def test_mapping_to_pdf():
+    # === ПОЛНЫЙ НАБОР ТЕСТОВЫХ ТЕХНОЛОГИЙ ===
+    test_inputs = [
+        # --- Programming Languages ---
+        "Python", "JavaScript", "TypeScript", "SQL", "Bash", "Java", "Go", "C++", "C#", "Ruby", "Scala", "R", "Node.js",
+
+        # --- Backend ---
+        "FastAPI", "Django REST", "Flask", "Celery", "SQLAlchemy", "BeautifulSoup",
+        "WebSocket", "Aiohttp", "Microservices", "Clean Architecture", "SOLID", "REST API", "MVC",
+
+        # --- Frontend ---
+        "React", "Next.js", "Redux", "Material UI", "Ant Design", "SCSS", "CSS", "HTML",
+        "Vue.js", "Angular", "AG Grid",
+
+        # --- Databases ---
+        "PostgreSQL", "pgvector", "MySQL", "Redis", "MongoDB", "Elasticsearch",
+        "SQL Server", "Snowflake", "BigQuery", "Hadoop", "Cassandra", "Oracle",
+
+        # --- Cloud Platforms ---
+        "AWS", "Azure", "Google Cloud", "GCP", "DigitalOcean", "Heroku", "Linode",
+        "Azure App Services", "Azure Functions",
+
+        # --- DevOps / IaC ---
+        "Git", "GitHub", "GitLab", "Bitbucket",
+        "Terraform", "Pulumi", "Ansible", "CloudFormation",
+        "ARM Templates", "Bicep", "Vagrant", "Morpheus",
+        "Azure DevOps", "Azure Pipelines",
+
+        # --- CI/CD Tools ---
+        "Jenkins", "GitLab CI/CD", "GitHub Actions", "Bitbucket Pipelines",
+        "Maven", "Nexus", "TeamCity", "CircleCI", "Travis CI",
+
+        # --- Containers & Orchestration ---
+        "Docker", "Docker Compose", "Kubernetes", "Helm", "Kustomize", "OpenShift",
+        "AKS", "EKS", "GKE",
+
+        # --- Monitoring & Observability ---
+        "Prometheus", "Grafana", "Datadog", "Splunk", "CloudWatch", "CloudTrail",
+        "Sentry", "Application Insights", "Log Analytics", "Logstash", "Kibana", "ELK Stack",
+
+        # --- Security ---
+        "IAM", "WAF", "GuardDuty", "Shield", "Security Groups", "NACL", "RBAC",
+        "Snyk", "Macie", "Inspector", "Azure Key Vault", "Azure Active Directory", "Keycloak",
+
+        # --- AI / ML / BI Tools ---
+        "OpenAI", "LLMs", "LlamaIndex", "Whisper", "DeepFace", "LangChain", "PyTorch",
+        "TensorFlow", "Keras", "Scikit-learn", "Pandas", "NumPy", "PySpark",
+        "Databricks", "Airflow", "Azure Data Factory", "Microsoft Fabric", "Kusto",
+        "SSIS", "SSRS", "SAS Viya", "Power BI", "DAX", "Tabular Model",
+
+        # --- Other Tools ---
+        "Nginx", "Apache", "Linux", "Windows Server", "Red Hat", "CentOS",
+        "VMware", "Elastic Beanstalk", "ECS", "Security Monkey", "CloudTracker"
+    ]
+
+
+    # === Классификация ===
+    results = {}
+    for tech in test_inputs:
+        matched = False
+        for pattern, category in TECH_MAPPING.items():
+            if re.search(pattern, tech.lower()):
+                results.setdefault(category, []).append(tech)
+                matched = True
+                break
+        if not matched:
+            results.setdefault("unmatched", []).append(tech)
+
+    # === Создание PDF ===
+    doc = SimpleDocTemplate("tech_mapping_test_report.pdf", pagesize=A4)
+    styles = getSampleStyleSheet()
+    styles["Normal"].fontName = BASE_FONT
+    styles["Normal"].fontSize = 10
+    styles["Heading2"].fontName = BOLD_FONT
+    styles["Heading2"].fontSize = 18
+
+    elements = [
+        Paragraph("<b>TECH MAPPING – FULL CATEGORY TEST REPORT</b>", styles["Heading2"]),
+        Spacer(1, 10)
+    ]
+
+    # === Сортировка категорий ===
+    desired_order = [
+        "programming_languages", "backend", "frontend", "databases", "cloud_platforms",
+        "devops_iac", "ci_cd_tools", "containers_orchestration",
+        "monitoring_security", "security", "ai_ml_tools", "other_tools", "unmatched"
+    ]
+
+    for i, category in enumerate(desired_order, start=1):
+        tools = results.get(category, [])
+        if not tools:
+            continue
+
+        cat_title = Paragraph(f"<b>{category.replace('_', ' ').title()}</b>", styles["Normal"])
+        tool_text = Paragraph(", ".join(sorted(set(tools))), styles["Normal"])
+
+        table = Table([[cat_title, tool_text]], colWidths=[60 * mm, None], splitByRow=1)
+        style = TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BOX", (0, 0), (-1, -1), 0.25, colors.grey),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ])
+        if i % 2 == 0:
+            style.add("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke)
+        table.setStyle(style)
+
+        elements.append(KeepTogether([table, Spacer(1, 6)]))
+        if i % 6 == 0:  # каждые 6 категорий — новая страница
+            elements.append(PageBreak())
+
+    doc.build(elements)
+    print("\n✅ PDF создан: tech_mapping_test_report.pdf")
+
+
+
+if __name__ == "__main__":
+    test_mapping_to_pdf()
