@@ -32,8 +32,8 @@ TECH_MAPPING = {
     r"(?i)\bnode(\.js)?\b": "programming_languages",
     r"(?i)\bjava\b": "programming_languages",
     r"(?i)\bgo(lang)?\b": "programming_languages",
-    r"(?i)\bc\+\+\b": "programming_languages",
-    r"(?i)\bc#\b": "programming_languages",
+    r"(?i)(?<!\w)c\+\+(?!\w)": "programming_languages",   # fixed
+    r"(?i)(?<!\w)c#(?!\w)": "programming_languages",     # fixed
     r"(?i)\bruby\b": "programming_languages",
     r"(?i)\bscala\b": "programming_languages",
     r"(?i)\br\b": "programming_languages",
@@ -47,6 +47,11 @@ TECH_MAPPING = {
     r"(?i)\baiohttp\b": "backend",
     r"(?i)\bmicroservices?\b": "backend",
     r"(?i)\bapi\b": "backend",
+    r"(?i)\bbeautiful\s*soup\b": "backend",
+    r"(?i)\bclean\s*architecture\b": "backend",
+    r"(?i)\bsolid\b": "backend",
+    r"(?i)\bmvc\b": "backend",
+    r"(?i)\bweb\s*socket\b": "backend",
 
     # ===== Frontend =====
     r"(?i)\breact(\.js)?\b": "frontend",
@@ -59,6 +64,7 @@ TECH_MAPPING = {
     r"(?i)\bscss\b": "frontend",
     r"(?i)\bmaterial\s*ui\b": "frontend",
     r"(?i)\bant\s*design\b": "frontend",
+    r"(?i)\bag\s*grid\b": "frontend",
 
     # ===== Databases =====
     r"(?i)\b(postgres|postgresql)\b": "databases",
@@ -71,13 +77,17 @@ TECH_MAPPING = {
     r"(?i)\boracle\b": "databases",
     r"(?i)\bcassandra\b": "databases",
     r"(?i)\bbigquery\b": "databases",
+    r"(?i)\bpgvector\b": "databases",
 
     # ===== Data Engineering =====
     r"(?i)\bazure\s+(data\s+factory|synapse|data\s+lake|databricks)\b": "data_engineering",
     r"(?i)\bspark\b": "data_engineering",
+    r"(?i)\bpy\s*spark\b": "data_engineering",
     r"(?i)\bdatabricks\b": "data_engineering",
     r"(?i)\bkafka\b": "data_engineering",
     r"(?i)\bairflow\b": "data_engineering",
+    r"(?i)\bkusto\b": "data_engineering",
+    r"(?i)\bhadoop\b": "data_engineering",
 
     # ===== ETL Tools =====
     r"(?i)\btalend\b": "etl_tools",
@@ -92,6 +102,8 @@ TECH_MAPPING = {
     r"(?i)\bdax\b": "bi_tools",
     r"(?i)\bssrs\b": "bi_tools",
     r"(?i)\bsas\s*viya\b": "bi_tools",
+    r"(?i)\bmicrosoft\s*fabric\b": "bi_tools",
+    r"(?i)\btabular\s*model\b": "bi_tools",
 
     r"(?i)\bpandas\b": "analytics",
     r"(?i)\bnumpy\b": "analytics",
@@ -99,12 +111,13 @@ TECH_MAPPING = {
 
     # ===== Cloud Platforms =====
     r"(?i)\baws\b": "cloud_platforms",
-    r"(?i)\bazure(?!\s*(devops|pipelines?))\b": "cloud_platforms",
+    r"(?i)\bazure(?!\s*(devops|pipelines?|active\s+directory|key\s+vault))\b": "cloud_platforms",
     r"(?i)\bgoogle\s*cloud\b": "cloud_platforms",
     r"(?i)\bgcp\b": "cloud_platforms",
     r"(?i)\bdigital\s*ocean\b": "cloud_platforms",
     r"(?i)\bheroku\b": "cloud_platforms",
     r"(?i)\blinode\b": "cloud_platforms",
+    r"(?i)\belastic\s*beanstalk\b": "cloud_platforms",
     r"(?i)\bazure\s+(app\s*services?|functions?)\b": "cloud_platforms",
 
     # ===== DevOps / IaC =====
@@ -115,17 +128,18 @@ TECH_MAPPING = {
     r"(?i)\barm\s*templates?\b": "devops_iac",
     r"(?i)\bbicep\b": "devops_iac",
     r"(?i)\bvagrant\b": "devops_iac",
+    r"(?i)\bmorpheus\b": "devops_iac",
 
     # ===== CI/CD Tools =====
     r"(?i)\bjenkins\b": "ci_cd_tools",
     r"(?i)\bgitlab\s*(ci/?cd)?\b": "ci_cd_tools",
-    r"(?i)\bgithub\s*(actions?)?\b": "ci_cd_tools",
-    r"(?i)\bbitbucket\s*(pipelines?)?\b": "ci_cd_tools",
+    r"(?i)\bgithub(\s*actions?)?\b": "ci_cd_tools",
+    r"(?i)\bbitbucket(\s*pipelines?)?\b": "ci_cd_tools",
     r"(?i)\bmaven\b": "ci_cd_tools",
     r"(?i)\bnexus\b": "ci_cd_tools",
     r"(?i)\bteamcity\b": "ci_cd_tools",
     r"(?i)\bcircleci\b": "ci_cd_tools",
-    r"(?i)\btravis\b": "ci_cd_tools",
+    r"(?i)\btravis(\s*ci)?\b": "ci_cd_tools",
     r"(?i)\bazure\s*(devops|pipelines?)\b": "ci_cd_tools",
 
     # ===== Containers & Orchestration =====
@@ -136,8 +150,10 @@ TECH_MAPPING = {
     r"(?i)\baks\b": "containers_orchestration",
     r"(?i)\beks\b": "containers_orchestration",
     r"(?i)\bgke\b": "containers_orchestration",
+    r"(?i)\bopen\s*shift\b": "containers_orchestration",
+    r"(?i)\becs\b": "containers_orchestration",
 
-    # ===== Monitoring & Security =====
+    # ===== Monitoring & Observability =====
     r"(?i)\bprometheus\b": "monitoring_security",
     r"(?i)\bgrafana\b": "monitoring_security",
     r"(?i)\bdatadog\b": "monitoring_security",
@@ -146,8 +162,12 @@ TECH_MAPPING = {
     r"(?i)\bcloudtrail\b": "monitoring_security",
     r"(?i)\bsentry\b": "monitoring_security",
     r"(?i)\bazure\s+(monitor|application\s+insights|log\s+analytics)\b": "monitoring_security",
+    r"(?i)\bapplication\s+insights\b": "monitoring_security",
+    r"(?i)\blog\s*analytics\b": "monitoring_security",
     r"(?i)\blogstash\b": "monitoring_security",
     r"(?i)\bkibana\b": "monitoring_security",
+    r"(?i)\belk\s*stack\b": "monitoring_security",
+    r"(?i)\bcloudtracker\b": "monitoring_security",
 
     # ===== Security =====
     r"(?i)\biam\b": "security",
@@ -156,6 +176,12 @@ TECH_MAPPING = {
     r"(?i)\bsnyk\b": "security",
     r"(?i)\bazure\s+(active\s+directory|key\s+vault)\b": "security",
     r"(?i)\brbac\b": "security",
+    r"(?i)\bkeycloak\b": "security",
+    r"(?i)\bmacie\b": "security",
+    r"(?i)\binspector\b": "security",
+    r"(?i)\bsecurity\s+(groups?|monkey|shield)\b": "security",
+    r"(?i)\bnacl\b": "security",
+    r"(?i)\bshield\b": "security",
 
     # ===== AI & ML Tools =====
     r"(?i)\bopenai\b": "ai_ml_tools",
@@ -163,9 +189,10 @@ TECH_MAPPING = {
     r"(?i)\bpytorch\b": "ai_ml_tools",
     r"(?i)\btensorflow\b": "ai_ml_tools",
     r"(?i)\bkeras\b": "ai_ml_tools",
-    r"(?i)\bllm\b": "ai_ml_tools",
+    r"(?i)\bllms?\b": "ai_ml_tools",
     r"(?i)\bwhisper\b": "ai_ml_tools",
     r"(?i)\bllama(index|dex)?\b": "ai_ml_tools",
+    r"(?i)\bdeepface\b": "ai_ml_tools",
 
     # ===== Infrastructure / Operating Systems =====
     r"(?i)\bwindows\s*server\b": "infrastructure_os",
@@ -180,13 +207,8 @@ TECH_MAPPING = {
     # ===== Other Tools =====
     r"(?i)\bgit\b": "other_tools",
     r"(?i)\bnginx\b": "other_tools",
-    r"(?i)\blinux\b": "other_tools",
-    r"(?i)\bvmware\b": "other_tools",
-    r"(?i)\bwindows\s*server\b": "other_tools",
-    r"(?i)\bred\s*hat\b": "other_tools",
-    r"(?i)\bcentos\b": "other_tools",
+    r"(?i)\bapache\b": "other_tools",
 }
-
 
 
 # ===== ТЕСТ И ВЫВОД В PDF =====

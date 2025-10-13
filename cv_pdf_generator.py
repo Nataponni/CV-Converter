@@ -1,7 +1,8 @@
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, KeepInFrame, KeepTogether, PageBreak
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, KeepInFrame, KeepTogether, PageBreak, Flowable
 )
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
@@ -12,26 +13,23 @@ import re
 import os
 import json
 
-# Регистрация шрифтов
+# --- Шрифты ---
 pdfmetrics.registerFont(TTFont("Roboto", "fonts/Roboto-Regular.ttf"))
 pdfmetrics.registerFont(TTFont("Roboto-Bold", "fonts/Roboto-Bold.ttf"))
 BASE_FONT = "Roboto"
 BOLD_FONT = "Roboto-Bold"
 
+# --- Стили ---
 styles = getSampleStyleSheet()
+BASE_FONT_SIZE = 11
+HEADING_FONT_SIZE = 14
+TITLE_FONT_SIZE = 24
 
-# --- Базовый размер шрифта и гарнитура ---
-BASE_FONT_SIZE = 11     # Было 10, теперь читается лучше
-HEADING_FONT_SIZE = 14  # Для подзаголовков
-TITLE_FONT_SIZE = 24    # Для основного заголовка
-
-# --- Базовые шрифты для всех ключевых стилей ---
 for key in ["Normal", "Title", "Heading2", "Heading3"]:
     styles[key].fontName = BASE_FONT
 
-# --- Конкретные настройки ---
 styles["Normal"].fontSize = BASE_FONT_SIZE
-styles["Normal"].leading = BASE_FONT_SIZE + 2  # межстрочный интервал
+styles["Normal"].leading = BASE_FONT_SIZE + 2
 
 styles["Title"].fontName = BOLD_FONT
 styles["Title"].fontSize = TITLE_FONT_SIZE
@@ -48,20 +46,17 @@ styles["Heading3"].fontSize = HEADING_FONT_SIZE
 styles["Heading3"].leading = HEADING_FONT_SIZE + 1
 styles["Heading3"].spaceAfter = 4
 
-# --- ДОБАВЬ ПРЕМИУМ СТИЛЬ ---
+FIRM_COLOR = colors.HexColor("#2196F3")
 
-FIRM_COLOR = colors.HexColor("#2196F3")  # Голубой фирменный цвет
-# LOGO_PATH = "logo.png"  # Путь к логотипу (замени на свой)
-
-# Премиальные стили карточек проектов
+# --- Project Styles ---
 project_card_title_style = ParagraphStyle(
     "ProjectCardTitle",
     parent=styles["Heading3"],
     fontName=BOLD_FONT,
-    fontSize=16,   # 🔹 было 15
+    fontSize=16,
     leading=20,
     textColor=colors.HexColor("#222e3a"),
-    spaceAfter=6,
+    spaceAfter=4,
 )
 project_card_role_style = ParagraphStyle(
     "ProjectCardRole",
@@ -85,7 +80,6 @@ project_card_stack_style = ParagraphStyle(
     italic=True,
     spaceAfter=2,
 )
-
 
 # --- Утилиты ---
 def sanitize_filename(name: str) -> str:
@@ -111,30 +105,27 @@ def format_category_name(key: str) -> str:
         "other_tools": "Other Tools"
     }.get(key, key.replace("_", " ").title())
 
-# --- Блоки PDF ---
+# --- Блоки ---
 def make_left_box(data, styles):
     items = []
     header_style = ParagraphStyle("LeftHeader", parent=styles["Heading3"], fontName=BOLD_FONT, spaceAfter=6)
 
-    # Education
     edu = data.get("education", "")
     if edu:
         items += [p("<b>Education:</b>", header_style), p(edu, styles["Normal"]), Spacer(0, 6)]
 
-    # Languages
     langs = data.get("languages", [])
     if langs:
         items.append(p("<b>Languages:</b>", header_style))
         for lang in langs:
             lang_name = lang.get("language", "")
-            lvl  = lang.get("level", "")
+            lvl = lang.get("level", "")
             if lang_name and lvl:
                 items.append(Paragraph(f"{lang_name} &mdash; {lvl}", styles["Normal"]))
             elif lang_name:
                 items.append(p(f"• {lang_name}", styles["Normal"]))
         items.append(Spacer(0, 6))
 
-    # Domains
     dom = data.get("domains", [])
     if dom:
         items.append(p("<b>Domains:</b>", header_style))
@@ -147,8 +138,11 @@ def make_right_box(data, styles):
     body = [p(text, ParagraphStyle("Summary", parent=styles["Normal"], leading=16))]
     return KeepInFrame(0, 0, body, mode="shrink")
 
-    # --- Заголовок блока ---
 def make_overview_box(data, styles):
+    """
+    Формирует блок 'OVERVIEW – Hard Skills' с ограничением по длине.
+    Каждая категория занимает максимум две строки (~5–6 инструментов).
+    """
     hard_skills = data.get("hard_skills", {})
     if not hard_skills:
         return None
@@ -160,27 +154,31 @@ def make_overview_box(data, styles):
         fontName=BOLD_FONT,
         fontSize=18,
         leading=22,
-        textColor=colors.HexColor("#2196F3"),
-        spaceBefore=10,
-        spaceAfter=16
+        textColor=FIRM_COLOR,
+        spaceBefore=6,
+        spaceAfter=6,
     )
 
-    rows = [[Paragraph("OVERVIEW –<br/> Hard Skills", title_style), ""]]
-    rows.append(["", ""])  # отступ после заголовка
+    rows = [[Paragraph("OVERVIEW – Hard Skills", title_style), ""]]
+    rows.append(["", ""])
 
+    # порядок вывода
     desired_order = [
         "programming_languages", "backend", "frontend", "databases",
-        "data_engineering", "etl_tools", "bi_tools", "analytics",
         "cloud_platforms", "devops_iac", "ci_cd_tools",
         "containers_orchestration", "monitoring_security",
-        "security", "ai_ml_tools", "infrastructure_os", "other_tools"
+        "infrastructure_os", "other_tools"
     ]
+
+    # ограничитель по количеству элементов в строке
+    MAX_ITEMS = 6
 
     for key in desired_order:
         tools = hard_skills.get(key, [])
         if not tools:
             continue
 
+        # нормализуем список
         tool_names = []
         for t in tools:
             if isinstance(t, dict):
@@ -193,15 +191,29 @@ def make_overview_box(data, styles):
         if not tool_names:
             continue
 
+        # сортировка и уникальность
         tool_names = sorted(set(tool_names))
 
+        # ограничиваем количество
+        if len(tool_names) > MAX_ITEMS:
+            tool_names = tool_names[:MAX_ITEMS] + ["..."]
+
+        tools_str = ", ".join(tool_names)
+
+        # визуальное сокращение, чтобы строка не занимала более двух линий
+        if len(tools_str) > 120:
+            tools_str = tools_str[:117].rsplit(",", 1)[0] + ", ..."
+
         left = Paragraph(f"<b>{format_category_name(key)}:</b>",
-                         ParagraphStyle("Left", parent=styles["Normal"], fontName=BOLD_FONT, fontSize=11))
-        right = Paragraph(", ".join(tool_names),
-                          ParagraphStyle("Right", parent=styles["Normal"], fontSize=11, wordWrap="None"))  # ❗ одна строка
+                         ParagraphStyle("Left", parent=styles["Normal"],
+                                        fontName=BOLD_FONT, fontSize=11))
+        right = Paragraph(tools_str,
+                          ParagraphStyle("Right", parent=styles["Normal"],
+                                         fontSize=11, leading=13,
+                                         wordWrap='CJK',  # аккуратный перенос
+                                         textColor=colors.HexColor("#222e3a")))
         rows.append([left, right])
 
-    # Таблица с зеброй
     table = Table(rows, colWidths=[55*mm, 120*mm], hAlign="LEFT")
     style = TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -211,9 +223,10 @@ def make_overview_box(data, styles):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ("FONTNAME", (0, 0), (-1, 0), BOLD_FONT),
         ("FONTSIZE", (0, 0), (-1, 0), 14),
+        ("SPAN", (0, 0), (-1, 0)),
+        ("ALIGN", (0, 0), (-1, 0), "LEFT"),
     ])
 
-    # Чередование серых строк
     for i in range(2, len(rows)):
         bg = colors.whitesmoke if i % 2 == 0 else colors.white
         style.add("BACKGROUND", (0, i), (-1, i), bg)
@@ -224,7 +237,7 @@ def make_overview_box(data, styles):
 
 def make_first_page_section(data, styles):
     """
-    Персональный блок в премиальном стиле, с левой колонкой и увеличенным шрифтом.
+    Первая страница — имя, должность, контакты, Education, Languages, Domains и Summary.
     """
     elements = []
 
@@ -240,9 +253,9 @@ def make_first_page_section(data, styles):
     # --- Правая колонка (Profile Summary) ---
     right_box = make_right_box(data, styles)
 
+    # --- Таблица с двумя колонками ---
     left_w = 70 * mm
     right_w = 90 * mm
-
     table = Table([[left_box, right_box]], colWidths=[left_w, right_w], hAlign="LEFT")
     table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -252,21 +265,21 @@ def make_first_page_section(data, styles):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
 
-    # --- Заголовок (имя и должность, увеличенный шрифт) ---
+    # --- Заголовок (имя и должность) ---
     header = f'<b>{full_name}</b>'
     if position:
-        header += f'<br/><font color="#888888">{position}</font>'
+        header += f'<br/><font size="20" color="#888888">{position}</font>'
     header_p = Paragraph(header, ParagraphStyle(
         "CardTitleBig",
         parent=styles["Title"],
         fontName=BOLD_FONT,
         fontSize=28,
         leading=32,
-        spaceAfter=14,
-        textColor=colors.HexColor("#2196F3"),
+        spaceAfter=10,
+        textColor=FIRM_COLOR,
     ))
 
-    # --- Контакты ---
+    # --- Контактная информация ---
     contact_lines = []
     if location:
         contact_lines.append(f'<font color="#888888">{location}</font>')
@@ -274,34 +287,71 @@ def make_first_page_section(data, styles):
         contact_lines.append(f'<font color="#888888">{email}</font>')
     if phone:
         contact_lines.append(f'<font color="#888888">{phone}</font>')
-    contact_p = Paragraph(
-        "<br/>".join(contact_lines),
-        ParagraphStyle(
+
+    if contact_lines:
+        contact_p = Paragraph("<br/>".join(contact_lines), ParagraphStyle(
             "ContactInfoBig",
             parent=styles["Normal"],
-            fontSize=14,
-            leading=20,
+            fontSize=13,
+            leading=18,
             spaceAfter=12,
             textColor=colors.HexColor("#888888"),
-        )
-    )
+        ))
+        elements.append(contact_p)
 
-    # --- Сборка первой страницы ---
+    # --- Добавляем всё в блок ---
     elements.append(header_p)
-    elements.append(contact_p)
-    elements.append(Spacer(1, 18))
+    elements.append(Spacer(1, 10))
     elements.append(table)
-    elements.append(Spacer(1, 28))
+    elements.append(Spacer(1, 20))
 
     return elements
 
 
+# --- Проекты ---
+class RoundedCard(Flowable):
+    def __init__(self, content, width, padding=20, radius=6,
+                 strokeColor=colors.HexColor("#2196F3"),
+                 strokeWidth=1.2, shadow=True):
+        super().__init__()
+        self.content = content
+        self.width = width
+        self.padding = padding
+        self.radius = radius
+        self.strokeColor = strokeColor
+        self.strokeWidth = strokeWidth
+        self.shadow = shadow
+        self._inner = None
+        self._height = None
+
+    def wrap(self, availW, availH):
+        innerW = min(self.width, availW) - 2 * self.padding
+        kif = KeepInFrame(innerW, 10_000, self.content, mode="shrink")
+        w, h = kif.wrapOn(self.canv, innerW, availH)
+        self._inner = kif
+        self._height = h + 2 * self.padding
+        return min(self.width, availW), self._height
+
+    def draw(self):
+        c = self.canv
+        w, h = self.width, self._height
+        if self.shadow:
+            c.setFillColor(colors.HexColor("#cce8ff"))
+            c.roundRect(4, -4, w, h, self.radius, stroke=0, fill=1)
+        c.setStrokeColor(self.strokeColor)
+        c.setLineWidth(self.strokeWidth)
+        c.setFillColor(colors.white)
+        c.roundRect(0, 0, w, h, self.radius, stroke=1, fill=1)
+        self._inner.drawOn(c, self.padding, self.padding)
 
 def make_projects_section(projects, styles):
     if not projects:
         return []
 
     elements = []
+    FIRM_COLOR = colors.HexColor("#2196F3")
+
+    # --- Заголовок секции ---
     section_title = Paragraph(
         '<font color="#2196F3"><b>PROJECTS & EXPERIENCE</b></font>',
         ParagraphStyle(
@@ -309,13 +359,14 @@ def make_projects_section(projects, styles):
             parent=styles["Heading2"],
             fontSize=18,
             leading=22,
-            spaceAfter=14,
-            textColor=colors.HexColor("#2196F3"),
+            spaceAfter=10,
+            textColor=FIRM_COLOR,
         )
     )
-    elements += [section_title, Spacer(1, 18)]
 
     cards_on_page = 0
+    first_card_done = False
+
     for idx, project in enumerate(projects, 1):
         title = project.get("project_title", "")
         role = project.get("role", "")
@@ -324,129 +375,103 @@ def make_projects_section(projects, styles):
         tech_stack = project.get("tech_stack", [])
         responsibilities = project.get("responsibilities", [])
 
-        # Заголовок
-        header = f'<b>Project {idx}. {title}</b>'
+        pdfmetrics.registerFont(TTFont("Roboto-Italic", "fonts/Roboto-Italic.ttf"))
+
+        # --- Заголовок карточки ---
+        header = f"<b>Project {idx}. {title}</b>"
         if role:
-            header += f'<br/><font color="#888888">{role}</font>'
+            header += f'<br/><font size="11" color="#888888">{role}</font>'
         if duration:
-            header += f'<br/><font color="#2196F3">{duration}</font>'
-        header_p = Paragraph(header, ParagraphStyle(
-            "CardTitle",
-            parent=styles["Heading3"],
-            fontSize=15,
-            leading=20,
-            spaceAfter=10,
-            textColor=colors.HexColor("#222e3a"),
-        ))
+            header += f'<br/><font name="Roboto-Italic" size="10" color="#2196F3">{duration}</font>'
+        header_p = Paragraph(header, project_card_title_style)
 
-        # Описание
-        desc_p = Paragraph(overview, ParagraphStyle(
-            "CardDesc",
-            parent=styles["Normal"],
-            fontSize=10,
-            leading=11,
-            spaceAfter=2,
-            textColor=colors.HexColor("#6c7a89"),
-        )) if overview else None
+        # --- Описание проекта ---
+        desc_p = Paragraph(overview, project_card_desc_style) if overview else None
 
-        # Responsibilities (каждый пункт отдельным Paragraph)
-
+        # --- Responsibilities ---
         resp_items = []
         if responsibilities:
             resp_items.append(Paragraph(
-                '<b><font color="#2196F3">Responsibilities:</font></b>',   # 🔹 жирный и синий заголовок
+                "Responsibilities:",
                 ParagraphStyle(
                     "CardRespTitle",
                     parent=styles["Normal"],
                     fontSize=10,
-                    leading=11,
-                    spaceAfter=2,
+                    leading=12,
+                    spaceAfter=6,
                     textColor=FIRM_COLOR,
-                )
+                ),
             ))
             for r in responsibilities:
-                resp_items.append(Paragraph(
-                    f'• {r}',
-                    ParagraphStyle(
-                        "CardRespItem",
-                        parent=styles["Normal"],
-                        fontSize=10,
-                        leading=11,
-                        leftIndent=24,      # отступ для всей строки
-                        firstLineIndent=-10, # 🔹 сдвигаем только первую строку (чтобы точка осталась слева)
-                        spaceAfter=0,
-                        textColor=colors.HexColor("#222e3a"),
+                resp_items.append(
+                    Paragraph(
+                        f"• {r}",
+                        ParagraphStyle(
+                            "CardRespItem",
+                            parent=styles["Normal"],
+                            fontSize=10,
+                            leading=12,
+                            leftIndent=20,
+                            firstLineIndent=-10,
+                            textColor=colors.HexColor("#222e3a"),
+                        ),
                     )
-        ))
+                )
 
-        # Tech stack (в строку)
+        # --- Tech stack (выровнено строго под остальным текстом) ---
         stack_p = None
         if tech_stack:
             stack = " · ".join(tech_stack)
             stack_p = Paragraph(
-                f'<font color="#2196F3"><b>Tech stack:</b> {stack}</font>',
+                f'<b><font color="#2196F3">Tech stack:</font></b> {stack}',
                 ParagraphStyle(
-                    "CardStack",
+                    "CardStackFixed",
                     parent=styles["Normal"],
-                    fontSize=11,
-                    leading=12,
-                    spaceAfter=0,
-                    textColor=colors.HexColor("#2196F3"),
-                )
+                    fontSize=10,
+                    leading=13,
+                    leftIndent=55,
+                    firstLineIndent=-55,
+                    spaceBefore=4,
+                    spaceAfter=8,
+                    textColor=FIRM_COLOR,
+                ),
             )
 
-        # Содержимое карточки
+        # --- Сборка содержимого карточки ---
         card_content = [header_p]
         if desc_p:
             card_content.append(desc_p)
         if resp_items:
             card_content.extend(resp_items)
         if stack_p:
-            card_content.append(Spacer(1, 10))
             card_content.append(stack_p)
 
-        card_table = Table([[KeepInFrame(0, 170 * mm, card_content, mode="truncate")]],
-            colWidths=[170 * mm],
-            style=TableStyle([
-                ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-                ("BOX", (0, 0), (-1, -1), 1.5, colors.HexColor("#2196F3")),
-                ("ROUNDED", (0, 0), (-1, -1), 14),
-                ("LEFTPADDING", (0, 0), (-1, -1), 24),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 24),
-                ("TOPPADDING", (0, 0), (-1, -1), 20),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 20),
-                ("SHADOW", (0, 0), (-1, -1), colors.HexColor("#bfe3ff"), 6, -6),
-            ])
+        # --- Создание округлённой карточки ---
+        card = RoundedCard(
+            content=card_content,
+            width=170 * mm,
+            padding=20,
+            radius=6,
+            strokeColor=FIRM_COLOR,
+            strokeWidth=1.2,
+            shadow=True,
         )
 
-        elements.append(Spacer(1, 0))
-        elements.append(card_table)
-        elements.append(Spacer(1, 10))
-        cards_on_page += 1
+        # --- Добавление карточек в поток ---
+        if not first_card_done:
+            elements.append(KeepTogether([section_title, Spacer(1, 10), card, Spacer(1, 8)]))
+            first_card_done = True
+            cards_on_page = 1
+        else:
+            elements.append(KeepTogether([card, Spacer(1, 8)]))
+            cards_on_page += 1
 
-        # После двух карточек — новая страница
+        # --- Две карточки на страницу ---
         if cards_on_page == 2:
             elements.append(PageBreak())
             cards_on_page = 0
 
     return elements
-
-import re
-
-def parse_years(value):
-    """
-    Приводит years_of_experience к числу.
-    Поддерживает строки вида '5+ years', '8 years', '', а также int.
-    """
-    if not value:
-        return 0
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        match = re.search(r"\d+", value)
-        if match:
-            return int(match.group())
-    return 0
 
 
 def make_skills_overview_box(data, styles):
@@ -454,7 +479,6 @@ def make_skills_overview_box(data, styles):
     if not skills_overview:
         return None
 
-    # Заголовок
     title = Paragraph(
         '<font color="#2196F3"><b>SKILLS OVERVIEW</b></font>',
         ParagraphStyle(
@@ -462,67 +486,73 @@ def make_skills_overview_box(data, styles):
             parent=styles["Heading2"],
             fontSize=18,
             leading=22,
-            spaceAfter=16,
+            spaceAfter=12,
             textColor=colors.HexColor("#2196F3"),
         )
     )
 
-    # Группируем по категориям
     grouped = {}
     for item in skills_overview:
         cat = item.get("category", "").strip()
         tool = item.get("tool", "").strip()
-        years = parse_years(item.get("years_of_experience", 0))
-
+        years = item.get("years_of_experience", 0)
+        try:
+            years = int(re.search(r"\d+", str(years)).group())
+        except Exception:
+            years = 0
         if cat not in grouped:
             grouped[cat] = {"tools": [], "max_years": 0}
-
         if tool:
             grouped[cat]["tools"].append(tool)
-
         grouped[cat]["max_years"] = max(grouped[cat]["max_years"], years)
 
-    # Заголовки таблицы
+    # --- стили
+    header_left = ParagraphStyle("HeaderLeft", parent=styles["Normal"],
+                                 fontName=BOLD_FONT, fontSize=11,
+                                 alignment=TA_LEFT, textColor=colors.HexColor("#222e3a"))
+    header_center = ParagraphStyle("HeaderCenter", parent=styles["Normal"],
+                                   fontName=BOLD_FONT, fontSize=11,
+                                   alignment=TA_CENTER, textColor=colors.HexColor("#222e3a"))
+    cell_left = ParagraphStyle("CellLeft", parent=styles["Normal"],
+                               fontSize=11, alignment=TA_LEFT,
+                               textColor=colors.HexColor("#222e3a"))
+    cell_center = ParagraphStyle("CellCenter", parent=styles["Normal"],
+                                 fontSize=11, alignment=TA_CENTER,
+                                 textColor=colors.HexColor("#222e3a"))
+
     rows = [[
-        Paragraph("<b>Category</b>", styles["Normal"]),
-        Paragraph("<b>Tools</b>", styles["Normal"]),
-        Paragraph("<b>YoE</b>", styles["Normal"])
+        Paragraph("Category", header_left),
+        Paragraph("Tools", header_left),
+        Paragraph("YoE", header_center),
     ]]
 
-    # Данные
+    # 🔹 добавляем только те строки, где YoE > 0
     for cat, values in grouped.items():
-        tools = ", ".join(sorted(set(values["tools"])))
-        years = str(values["max_years"])
-        cat_name = format_category_name(cat)  # 👈 нормализуем название категории
+        years = values["max_years"]
+        if years <= 0:
+            continue  # ⬅️ пропускаем строки без опыта
 
+        tools = ", ".join(sorted(set(values["tools"])))
         rows.append([
-            Paragraph(cat_name, styles["Normal"]),
-            Paragraph(tools, styles["Normal"]),
-            Paragraph(years, ParagraphStyle("YoE", parent=styles["Normal"], alignment=1))
+            Paragraph(format_category_name(cat), cell_left),
+            Paragraph(tools, cell_left),
+            Paragraph(str(years), cell_center),
         ])
 
-    # Таблица
     table = Table(rows, colWidths=[60*mm, 80*mm, 30*mm], hAlign="LEFT")
-
     style = TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (0, 0), (1, -1), "LEFT"),
-        ("ALIGN", (2, 1), (2, -1), "CENTER"),
-        ("FONTNAME", (0, 0), (-1, 0), BOLD_FONT),
-        ("FONTSIZE", (0, 0), (-1, 0), 12),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8f2fc")),
         ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
         ("TOPPADDING", (0, 0), (-1, 0), 6),
     ])
 
-    # Зебра
     for i in range(1, len(rows)):
-        bg = colors.whitesmoke if i % 2 == 0 else colors.white
-        style.add("BACKGROUND", (0, i), (-1, i), bg)
-
+        style.add("BACKGROUND", (0, i), (-1, i),
+                  colors.whitesmoke if i % 2 == 0 else colors.white)
     table.setStyle(style)
-    return [title, Spacer(1, 8), table, Spacer(1, 16)]
 
+    return [KeepTogether([title, Spacer(1, 8), table, Spacer(1, 12)])]
 
 
 # --- Главная сборка ---
@@ -532,43 +562,27 @@ def create_pretty_first_section(json_data, output_dir=".", prefix="CV"):
     fname = f"{prefix}_{safe}_{date.today().isoformat()}.pdf"
     out_path = os.path.join(output_dir, fname)
 
-    doc = SimpleDocTemplate(
-        out_path,
-        pagesize=A4,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=18 * mm,
-        bottomMargin=18 * mm
-    )
+    doc = SimpleDocTemplate(out_path, pagesize=A4,
+                            leftMargin=18*mm, rightMargin=18*mm,
+                            topMargin=18*mm, bottomMargin=18*mm)
 
     elements = []
-
-    # --- Персональный блок с левой колонкой и премиальным стилем ---
     elements += make_first_page_section(json_data, styles)
-
-    # --- Overview (Hard Skills) ---
     overview_box = make_overview_box(json_data, styles)
     if overview_box:
         elements.append(overview_box)
-
-
-    # --- Projects Section ---
     projects_section = make_projects_section(json_data.get("projects_experience", []), styles)
     elements += projects_section
-
-    # --- Skill Overview ---
     skills_overview_box = make_skills_overview_box(json_data, styles)
     if skills_overview_box:
-        elements += skills_overview_box
-
-
+        elements.append(KeepTogether([Spacer(1, 6), *skills_overview_box]))
 
     doc.build(elements)
     return out_path
 
 # --- Запуск ---
 if __name__ == "__main__":
-    with open("data_output/result_2.json", "r", encoding="utf-8") as f:
+    with open("data_output/result_1.json", "r", encoding="utf-8") as f:
         data = json.load(f)
     pdf_path = create_pretty_first_section(data)
     print(f"✅ PDF создан: {pdf_path}")

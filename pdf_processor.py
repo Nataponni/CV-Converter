@@ -3,10 +3,7 @@ import re
 
 
 def extract_text_by_page(pdf_path):
-    """
-    Extracts text page-by-page from a PDF using PyMuPDF.
-    Returns list of strings (one per page).
-    """
+    """Extracts text page-by-page from a PDF using PyMuPDF."""
     doc = fitz.open(pdf_path)
     pages_text = [page.get_text().strip() for page in doc]
     doc.close()
@@ -14,18 +11,11 @@ def extract_text_by_page(pdf_path):
 
 
 def clean_text(text):
-    """
-    Normalize and tag known sections like [DOMAINS], [EDUCATION], etc.
-    """
-    # Remove indexes like [1], (2)
-    text = re.sub(r"\[\d+\]", "", text)
-    text = re.sub(r"\(\d+\)", "", text)
-
-    # Remove excessive whitespace
+    """Normalize and tag known sections like [DOMAINS], [EDUCATION], etc."""
+    text = re.sub(r"\[\d+\]|\(\d+\)", "", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\s{2,}", " ", text)
 
-    # Add section markers without removing original titles
     section_markers = {
         r"(?i)(?<=\n)(Domains:?)": "[DOMAINS]",
         r"(?i)(Languages:?)": "[LANGUAGES]",
@@ -38,44 +28,59 @@ def clean_text(text):
     for pattern, marker in section_markers.items():
         text = re.sub(pattern, f"\n{marker}\n\\1", text)
 
-    # Add closing tags for cleaner block extraction
-    text = re.sub(r"\[DOMAINS\](.*?)\n(?=\[|\Z)", r"[DOMAINS]\1[/DOMAINS]\n", text, flags=re.DOTALL)
-    text = re.sub(r"\[SKILLS\](.*?)\n(?=\[|\Z)", r"[SKILLS]\1[/SKILLS]\n", text, flags=re.DOTALL)
-    text = re.sub(r"\[LANGUAGES\](.*?)\n(?=\[|\Z)", r"[LANGUAGES]\1[/LANGUAGES]\n", text, flags=re.DOTALL)
-    text = re.sub(r"\[EDUCATION\](.*?)\n(?=\[|\Z)", r"[EDUCATION]\1[/EDUCATION]\n", text, flags=re.DOTALL)
-    text = re.sub(r"\[PROJECTS\](.*?)\n(?=\[|\Z)", r"[PROJECTS]\1[/PROJECTS]\n", text, flags=re.DOTALL)
-    text = re.sub(r"\[PROFILE_SUMMARY\](.*?)\n(?=\[|\Z)", r"[PROFILE_SUMMARY]\1[/PROFILE_SUMMARY]\n", text, flags=re.DOTALL)
+    # Add closing tags
+    for tag in ["DOMAINS", "SKILLS", "LANGUAGES", "EDUCATION", "PROJECTS", "PROFILE_SUMMARY"]:
+        text = re.sub(
+            rf"\[{tag}\](.*?)\n(?=\[|\Z)",
+            rf"[{tag}]\1[/{tag}]\n",
+            text,
+            flags=re.DOTALL,
+        )
 
     return text.strip()
 
-def clean_responsibilities(responsibilities, max_words=12):
+
+def clean_responsibilities(responsibilities, max_words=18, max_items=6):
     """
-    Kürzt und bereinigt die 'responsibilities'-Liste.
-    Lange Sätze werden abgeschnitten, aber so,
-    dass der Sinn nicht komplett verloren geht.
+    Очищает и сокращает список 'responsibilities':
+    - Удаляет фразы типа "responsible for", "involved in" и т.п.
+    - Сокращает слишком длинные пункты до max_words.
+    - Делает текст лаконичным, но сохраняет смысл.
+    - Ограничивает количество пунктов до max_items.
     """
     cleaned = []
-    for resp in responsibilities:
-        # убираем пробелы и точки в конце
+    for i, resp in enumerate(responsibilities):
+        if i >= max_items:
+            break  # ограничение по числу пунктов
+
+        # базовая очистка
         resp = resp.strip().rstrip(".;:")
 
-        # делим на слова
-        words = resp.split()
+        # удаляем вводные фразы (responsible for, participated in и т.п.)
+        resp = re.sub(
+            r"(?i)\b(responsible\s+for|involved\s+in|participated\s+in|helped\s+to|tasked\s+with|working\s+on|assist(ed)?\s+in|support(ed)?\s+with)\b",
+            "",
+            resp,
+        ).strip()
 
+        # сокращаем слишком длинные пункты
+        words = resp.split()
         if len(words) > max_words:
-            # берём первые max_words слов и добавляем "..."
-            short = " ".join(words[:max_words]) + "..."
-            cleaned.append(short)
-        else:
-            cleaned.append(resp)
+            resp = " ".join(words[:max_words]) + "..."
+
+        # чистим повторяющиеся пробелы
+        resp = re.sub(r"\s{2,}", " ", resp)
+
+        # делаем первую букву заглавной
+        if resp:
+            cleaned.append(resp[0].upper() + resp[1:])
 
     return cleaned
 
 
+
 def extract_domains_from_text(text):
-    """
-    Extract exact values inside [DOMAINS] ... [/DOMAINS]
-    """
+    """Extract exact values inside [DOMAINS] ... [/DOMAINS]."""
     match = re.search(r"\[DOMAINS\](.*?)\[/DOMAINS\]", text, re.DOTALL)
     if not match:
         return []
@@ -83,3 +88,24 @@ def extract_domains_from_text(text):
     return [line.strip() for line in lines if line.strip()]
 
 
+def extract_dates(text):
+    """
+    Извлекает все даты и диапазоны из текста (для страховки, если GPT пропустит).
+    Возвращает список, например: ['Jan 2023 – Apr 2024', '2021', '2019 – Present'].
+    """
+    date_patterns = [
+        r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?[a-z]*\s*\d{4}",
+        r"\b(20\d{2}|19\d{2})\s*[-–]\s*(20\d{2}|present|jetzt|aktuell)\b",
+        r"\b(20\d{2}|19\d{2})\b",
+    ]
+    found = []
+    for pat in date_patterns:
+        found.extend(re.findall(pat, text, flags=re.IGNORECASE))
+    # нормализуем результат
+    flat = []
+    for f in found:
+        if isinstance(f, tuple):
+            flat.append(" – ".join([x for x in f if x]))
+        else:
+            flat.append(f)
+    return list(dict.fromkeys(flat))  # уникальные

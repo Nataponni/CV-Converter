@@ -52,6 +52,14 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
+ERROR:  не подтянулись библиотеки:
+
+Нажми в VS Code: Ctrl + Shift + P
+Введи и выбери: Python: Select Interpreter
+В списке выбери:
+.venv — Python 3.12.1 (или что-то похожее)
+
+
 ### 3. Abhängigkeiten installieren
 
 ```bash

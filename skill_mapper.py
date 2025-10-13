@@ -19,15 +19,15 @@ def remap_hard_skills(hard_skills_from_gpt):
         "frontend": [],
         "data_engineering": [],
         "etl_tools": [],
-        "analytics_bi": [],
-        "testing_tools": [],
+        "bi_tools": [],
+        "analytics": [],
         "monitoring_security": [],
-        "version_control": [],
-        "ai_ml_tools": [],
         "security": [],
-        "infrastructure": [],
+        "ai_ml_tools": [],
+        "infrastructure_os": [],   # ✅ добавлено (соответствует TECH_MAPPING)
         "other_tools": []
     }
+
 
 
     # Jedes Tool prüfen und zuordnen

@@ -8,8 +8,8 @@ from utils import save_json, has_empty_fields
 from fill_cv import fill_missing_fields
 from skill_mapper import remap_hard_skills
 
-INPUT_PDF = "data_input/CV_Kunde_2.pdf"
-OUTPUT_JSON = "data_output/result_2.json"
+INPUT_PDF = "data_input/CV_Kunde_1.pdf"
+OUTPUT_JSON = "data_output/result_1.json"
 
 
 def filter_explicit_domains(text: str, domains: list[str]) -> list[str]:
@@ -17,7 +17,7 @@ def filter_explicit_domains(text: str, domains: list[str]) -> list[str]:
     Sucht explizit erwähnte 'Domains' im Text (z. B. FinTech, AI, Healthcare).
     Gibt nur diejenigen zurück, die tatsächlich im Text vorkommen.
     """
-    match = re.search(r"(Domains\s*[:\-]?\s*)([\s\S]{0,500})", text, re.IGNORECASE)
+    match = re.search(r"(Domains\s*[:\-]?\s*)([\s\S]{0,50C0})", text, re.IGNORECASE)
     if not match:
         return []
 
@@ -25,7 +25,7 @@ def filter_explicit_domains(text: str, domains: list[str]) -> list[str]:
     return [d for d in domains if re.search(rf"\b{re.escape(d)}\b", block, re.IGNORECASE)]
 
 
-def shorten_profile_summary(text: str, max_chars: int = 600) -> str:
+def shorten_profile_summary(text: str, max_chars: int = 1200) -> str:
     """
     Kürzt die Profilbeschreibung (profile_summary) auf eine maximale Länge
     und entfernt überflüssige Leerzeichen.
@@ -92,6 +92,17 @@ def main():
 
     # 7️⃣ Ergebnis als JSON-Datei speichern
     os.makedirs(os.path.dirname(OUTPUT_JSON), exist_ok=True)
+
+        # 5c️⃣ Проверка: если GPT пропустил duration — ищем даты напрямую в тексте
+    from pdf_processor import extract_dates  # импортируем здесь, чтобы не было циклических зависимостей
+    all_dates = extract_dates(full_text)
+
+    for project in result.get("projects_experience", []):
+        if not project.get("duration") or not project["duration"].strip():
+            # если GPT не указал период — пробуем взять ближайшую дату
+            if all_dates:
+                project["duration"] = all_dates.pop(0) if all_dates else ""
+
     save_json(OUTPUT_JSON, result)
 
     print(f"\n✅ Finale JSON-Datei gespeichert unter: {OUTPUT_JSON}")
