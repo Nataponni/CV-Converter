@@ -121,7 +121,7 @@ def add_inpro_header_footer(canvas, doc):
 
  
     # Footer
-    footer_lines = ["www.inpro-analytics.at", "recruiting@inpro-analytics.at", "Austria, Graz"]
+    footer_lines = ["Austria, Graz", "recruiting@inpro-analytics.at", "www.inpro-analytics.at"]
     canvas.setFont("Roboto", 8)
     canvas.setFillColor(colors.HexColor("#A9A8A8"))
     y = 20
@@ -222,7 +222,7 @@ def make_overview_box(data, styles):
     ]
 
     # ограничитель по количеству элементов в строке
-    MAX_ITEMS = 6
+    MAX_ITEMS = 12
 
     for key in desired_order:
         tools = hard_skills.get(key, [])
@@ -247,13 +247,13 @@ def make_overview_box(data, styles):
 
         # ограничиваем количество
         if len(tool_names) > MAX_ITEMS:
-            tool_names = tool_names[:MAX_ITEMS] + ["..."]
+            tool_names = tool_names[:MAX_ITEMS]
 
         tools_str = ", ".join(tool_names)
 
         # визуальное сокращение, чтобы строка не занимала более двух линий
         if len(tools_str) > 120:
-            tools_str = tools_str[:117].rsplit(",", 1)[0] + ", ..."
+            tools_str = tools_str[:117].rsplit(",", 1)[0]
 
         left = Paragraph(f"<b>{format_category_name(key)}:</b>",
                          ParagraphStyle("Left", parent=styles["Normal"],

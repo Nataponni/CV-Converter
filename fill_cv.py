@@ -91,6 +91,24 @@ def fill_cv_data(data: dict) -> dict:
     except Exception:
         return fill_missing_fields(data)
 
+def fix_project_dates_from_text(projects, original_text):
+    """
+    Если GPT ошибся в годах, пытаемся восстановить реальные даты из исходного текста.
+    """
+    for p in projects:
+        title = p.get("project_title", "")
+        duration = p.get("duration", "")
+        if not title:
+            continue
+
+        # Ищем рядом с названием проекта возможные даты
+        pattern = rf"{re.escape(title)}.*?(\b\d{{4}}\b).*?(\b\d{{4}}\b|Present)"
+        match = re.search(pattern, original_text, re.I | re.S)
+        if match:
+            real_dur = f"{match.group(1)} – {match.group(2)}"
+            if real_dur != duration:
+                p["duration"] = real_dur
+    return projects
 
 # ============================================================
 # 🔍 Тестовый запуск

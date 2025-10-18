@@ -35,6 +35,7 @@ def tag_dates(text: str) -> str:
         r"\b\d{1,2}\.\d{2}\b\s*[-–]\s*(?:Jetzt|Aktuell|Heute|Present|Now)\b",
         r"\b\d{2}/\d{4}\s*[-–]\s*\d{2}/\d{4}\b",                 # 09/2022 – 04/2024
         r"\b(20\d{2}|19\d{2})\s*[-–]\s*(?:20\d{2}|Present|Now|Heute|Jetzt|Aktuell)\b",
+        r"\b\d{2}\.\d{2}\s*[-–]\s*(?:\d{2}\.\d{2}|Jetzt|Aktuell|Heute|Present|Now)\b",
         r"(?:(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)\s+\d{4}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?[a-z]*\s*\d{4}",
     ]
     for pattern in date_patterns:
@@ -46,30 +47,64 @@ def tag_dates(text: str) -> str:
 # 3️⃣ Очистка и нормализация структуры
 # ============================================================
 def clean_text(text: str) -> str:
-    """Добавляет структурные маркеры секций CV для GPT."""
+    """
+    Добавляет структурные маркеры секций CV для GPT, с явными границами.
+    Делит резюме по ключевым разделам: Education, Projects, Skills и т.д.
+    """
+    # Очистка лишних символов
     text = re.sub(r"\[\d+\]|\(\d+\)", "", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\s{2,}", " ", text)
 
+    # 🔹 Ключевые секции
     section_markers = {
-        r"(?i)(Domains:?)": "[DOMAINS]",
-        r"(?i)(Languages:?)": "[LANGUAGES]",
-        r"(?i)(Education|Studium|Ausbildung):?": "[EDUCATION]",
-        r"(?i)(Profile|Summary|Über mich|Professional Summary)": "[PROFILE_SUMMARY]",
-        r"(?i)(Projects?|Experience|Berufserfahrung|Employment):?": "[PROJECTS]",
+        r"(?i)(Domains?|Industries):?": "[DOMAINS]",
+        r"(?i)(Languages?|Sprachen|Sprachkenntnisse):?": "[LANGUAGES]",
+        r"(?i)(Education|Studium|Ausbildung|Academic Background):?": "[EDUCATION]",
+        r"(?i)(Profile|Summary|Über mich|Professional Summary|Career Summary):": "[PROFILE_SUMMARY]",
+        r"(?i)(Projects?|Experience|Berufserfahrung|Employment|Work Experience):?": "[PROJECTS]",
         r"(?i)(Skills|Technologies|Kompetenzen|Tools|Professional skills|Technical skills):?": "[SKILLS]",
     }
 
+    # Вставляем метки начала секции
     for pattern, marker in section_markers.items():
         text = re.sub(pattern, f"\n{marker}\n\\1", text)
 
-    for tag in ["DOMAINS", "SKILLS", "LANGUAGES", "EDUCATION", "PROJECTS", "PROFILE_SUMMARY"]:
-        text = re.sub(
-            rf"\[{tag}\](.*?)\n(?=\[|\Z)",
-            rf"[{tag}]\1[/{tag}]\n",
-            text,
-            flags=re.DOTALL,
-        )
+    # 🧱 Явно закрываем каждую секцию
+    tags = ["DOMAINS", "SKILLS", "LANGUAGES", "EDUCATION", "PROJECTS", "PROFILE_SUMMARY"]
+    for i, tag in enumerate(tags):
+        # Закрытие до начала следующей секции
+        following_tags = tags[i + 1 :]
+        if following_tags:
+            next_tag_pattern = "|".join(f"\\[{t}\\]" for t in following_tags)
+            text = re.sub(
+                rf"\[{tag}\](.*?)(?=\n(?:{next_tag_pattern})|\Z)",
+                rf"[{tag}]\1[/{tag}]\n",
+                text,
+                flags=re.DOTALL,
+            )
+        else:
+            text = re.sub(
+                rf"\[{tag}\](.*)",
+                rf"[{tag}]\1[/{tag}]\n",
+                text,
+                flags=re.DOTALL,
+            )
+
+    # Убираем "приклеенные" строчки между секциями
+    text = re.sub(r"\]\s*\[", "]\n\n[", text)
+
+    # 🔹 Подсветим контекст для GPT
+    text = re.sub(
+        r"\[EDUCATION\]",
+        "[EDUCATION]\nContext: These are academic degrees, research or study projects, not employment.\n",
+        text,
+    )
+    text = re.sub(
+        r"\[PROJECTS\]",
+        "[PROJECTS]\nContext: These are professional or applied projects, often linked to employment or practical experience.\n",
+        text,
+    )
 
     return text.strip()
 
@@ -172,5 +207,5 @@ TEXT:
     with open(os.path.join(cache_dir, "prepared_text.txt"), "w", encoding="utf-8") as f:
         f.write(normalized_text)
 
-    return normalized_text
+    return normalized_text, raw_text
 

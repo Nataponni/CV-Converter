@@ -9,14 +9,14 @@ from chatgpt_client import (
     auto_fix_missing_fields,
 )
 from skill_mapper import remap_hard_skills
-from postprocess import unify_languages, unify_durations, clean_duplicates_in_skills
+from postprocess import unify_languages, unify_durations, clean_duplicates_in_skills, fix_project_dates_from_text
 from utils import save_json, has_empty_fields
 from schema import validate_schema
 
 
 # Пути к файлам
-INPUT_PDF = "data_input/CV_Kunde_1.pdf"
-OUTPUT_JSON = "data_output/result_1.json"
+INPUT_PDF = "data_input/CV Manuel Wolfsgruber.pdf"
+OUTPUT_JSON = "data_output/result_Manuel.json"
 
 
 # ============================================================
@@ -76,7 +76,8 @@ def main():
     print("🚀 Starting CV Extraction & Structuring Pipeline v2.0")
 
     # 1️⃣ Подготовка текста из PDF
-    prepared_text = prepare_cv_text(INPUT_PDF)
+    prepared_text, raw_pdf_text = prepare_cv_text(INPUT_PDF)
+
 
     # 2️⃣ GPT Шаг 1 — Извлечение структуры
     print("\n🧩 Step 1: Extracting CV structure...")
@@ -99,7 +100,12 @@ def main():
     print("\n🧼 Step 5: Normalizing and cleaning data...")
     result["hard_skills"] = remap_hard_skills(result.get("hard_skills", {}))
     result["hard_skills"] = clean_duplicates_in_skills(result["hard_skills"])
-    result["languages"] = unify_languages(result.get("languages", []), original_text=prepared_text)
+    result["languages"] = unify_languages(result.get("languages", []), original_text=raw_pdf_text)
+    result["projects_experience"] = fix_project_dates_from_text(
+        result.get("projects_experience", []),
+        raw_pdf_text
+    )
+    result["projects_experience"] = unify_durations(result["projects_experience"])
 
     # 7️⃣ Применение фильтров и сокращение профиля
     explicit_domains = filter_explicit_domains(prepared_text, result.get("domains", []))

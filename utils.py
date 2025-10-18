@@ -116,3 +116,21 @@ if __name__ == "__main__":
     save_json("data_output/test.json", test_data)
     loaded = load_json("data_output/test.json")
     print("Loaded JSON keys:", list(loaded.keys()))
+
+# ============================================================
+# 🔹 Normalize year helper
+# ============================================================
+def normalize_year(y: str) -> str:
+    """
+    Преобразует двухзначные годы в четырёхзначные.
+    Примеры:
+    - "21" → "2021"
+    - "98" → "1998"
+    - "2023" → "2023"
+    """
+    y = str(y).strip()
+    if not y.isdigit():
+        return y
+    if len(y) == 2:
+        return f"20{y}" if int(y) <= 30 else f"19{y}"
+    return y

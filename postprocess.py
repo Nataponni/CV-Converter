@@ -1,5 +1,7 @@
-
 import re
+from utils import normalize_year
+from datetime import datetime
+
 
 # ============================================================
 # 🔍 Интеллектуальное восстановление языков
@@ -23,6 +25,7 @@ def unify_languages(langs, original_text=None):
         lang = entry.get("language", "").strip().capitalize()
         level = entry.get("level", "").strip()
 
+        # Не меняем существующий уровень
         if not level:
             level = "Unspecified"
 
@@ -41,8 +44,13 @@ def unify_languages(langs, original_text=None):
         for lang in known_langs:
             if re.search(rf"\b{lang}\b", text):
                 snippet = text[max(0, text.find(lang) - 40): text.find(lang) + 60]
-                match = re.search(r"\b([ABC][12]\+?|native|fluent|intermediate|upper|basic|beginner)\b", snippet, re.I)
-                level = match.group(1).upper() if match else "Unspecified"
+                # Только уровни B1–C2 или A1–B2
+                match = re.search(r"\b([ABC][12]\+?)\b", snippet, re.I)
+                if match:
+                    level = match.group(1).upper()
+                else:
+                    level = "Unspecified"
+
                 normalized.append({"language": lang.capitalize(), "level": level})
 
     # 3️⃣ Убираем дубликаты
@@ -57,22 +65,21 @@ def unify_languages(langs, original_text=None):
     return unique
 
 
+
+
 # ============================================================
 # 2️⃣ Унификация формата дат в опыте
 # ============================================================
-import re
-from datetime import datetime
 
 def unify_durations(projects):
     """
-    Приводит все диапазоны дат к единому виду:
-    "Jul 2019 – Oct 2023" или "Jan 2021 – Present".
-    Поддерживает форматы:
-    - 07.19 – 10.23
-    - 09/2020 – 04/2024
-    - Mar 2020 – Present
-    - 2020 – 2023
-    - 07.2021 –
+    Унифицирует формат длительности проектов, сохраняя реальные даты и порядок.
+    Поддерживает:
+      - "07.21 – 12.23"
+      - "07.2021 – Jetzt"
+      - "2020 – 2023"
+      - "Jan 2021 – Present"
+      - "07.21 –"
     """
     months = {
         "01": "Jan", "1": "Jan",
@@ -93,43 +100,48 @@ def unify_durations(projects):
             continue
 
         original = duration.strip()
+        duration = original
 
-        # 1️⃣ Приводим дефисы и пробелы к стандарту
+        # --- Normalize spacing and dashes ---
         duration = re.sub(r"[–—−]+", "-", duration)
         duration = re.sub(r"\s*-\s*", " - ", duration)
 
-        # 2️⃣ Заменяем локализованные слова
-        duration = re.sub(r"(?i)\b(Jetzt|Heute|Aktuell|Now)\b", "Present", duration)
-        duration = re.sub(r"(?i)\b(Gegenwärtig|Momentan|Derzeit)\b", "Present", duration)
+        # --- Normalize localized terms ---
+        duration = re.sub(r"(?i)\b(Jetzt|Heute|Aktuell|Now|Present|Gegenwärtig|Momentan|Derzeit)\b", "Present", duration)
 
-        # 3️⃣ Обрабатываем форматы вроде "07.21 - 10.23"
+        # --- 1️⃣ Format "07.21 - 10.23" ---
         m = re.match(r"^\s*(\d{1,2})[./-](\d{2,4})\s*-\s*(\d{1,2})[./-](\d{2,4}|Present)\s*$", duration)
         if m:
             start_m, start_y, end_m, end_y = m.groups()
-            start_y = _normalize_year(start_y)
-            end_y = "Present" if "Present" in end_y else _normalize_year(end_y)
+            start_y = normalize_year(start_y)
+            end_y = "Present" if "Present" in end_y else normalize_year(end_y)
             start = f"{months.get(start_m.zfill(2), 'Jan')} {start_y}"
             end = f"{months.get(end_m.zfill(2), 'Jan')} {end_y}"
             project["duration"] = f"{start} – {end}"
             continue
 
-        # 4️⃣ Форматы "07.21 –" или "07.2021 –"
+        # --- 2️⃣ Format "07.21 –" ---
         m = re.match(r"^\s*(\d{1,2})[./-](\d{2,4})\s*-\s*$", duration)
         if m:
             start_m, start_y = m.groups()
-            start_y = _normalize_year(start_y)
+            start_y = normalize_year(start_y)
             start = f"{months.get(start_m.zfill(2), 'Jan')} {start_y}"
             project["duration"] = f"{start} – Present"
             continue
 
-        # 5️⃣ Форматы "2019 - 2023" или "2020 - Present"
-        m = re.match(r"^\s*(19|20)\d{2}\s*-\s*(?:19|20)?\d{2}|Present\s*$", duration)
+        # --- 3️⃣ Format "2019 - 2023" ---
+        m = re.match(r"^\s*((19|20)\d{2})\s*-\s*((?:19|20)?\d{2}|Present)\s*$", duration)
         if m:
-            duration = duration.replace("-", "–")
-            project["duration"] = duration
+            start_y, _, end_y = m.groups()
+            if len(end_y) == 2:
+                end_y = "20" + end_y
+            if int(start_y) > int(end_y.replace("Present", str(datetime.now().year))):
+                # swap if reversed
+                start_y, end_y = end_y, start_y
+            project["duration"] = f"{start_y} – {end_y}"
             continue
 
-        # 6️⃣ Форматы "Mar 2020 - Oct 2023"
+        # --- 4️⃣ "Mar 2020 - Oct 2023" ---
         m = re.match(
             r"(?i)^\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}\s*-\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?[a-z]*\s*(?:\d{4}|Present)",
             duration,
@@ -139,25 +151,23 @@ def unify_durations(projects):
             project["duration"] = duration.strip()
             continue
 
-        # 7️⃣ Если ничего не сработало — восстанавливаем из overview
-        if not project.get("duration"):
-            overview = project.get("overview", "")
-            match = re.search(r"(\b\d{4}\b).*(\b\d{4}\b|Present)", overview)
-            if match:
-                project["duration"] = f"{match.group(1)} – {match.group(2)}"
-            else:
-                project["duration"] = original.strip()
+        # --- 5️⃣ Try to recover from overview if GPT skipped it ---
+        overview = project.get("overview", "")
+        match = re.search(r"(\b\d{4}\b).{0,20}?(\b\d{4}\b|Present)", overview)
+        if match:
+            y1, y2 = match.groups()
+            if y1 and y2:
+                if int(y1) > int(y2.replace("Present", str(datetime.now().year))):
+                    y1, y2 = y2, y1
+                project["duration"] = f"{y1} – {y2}"
+                continue
+
+        # --- 6️⃣ Fallback: one year found ---
+        match = re.search(r"\b(19|20)\d{2}\b", original)
+        if match and not project.get("duration"):
+            project["duration"] = f"{match.group(0)} – Present"
 
     return projects
-
-
-def _normalize_year(y):
-    """Помогает корректно обрабатывать 2- и 4-значные года."""
-    y = y.strip()
-    if len(y) == 2:
-        # если 19–23 → это 2019–2023
-        return f"20{y}"
-    return y
 
 
 
@@ -165,10 +175,7 @@ def _normalize_year(y):
 # 3️⃣ Удаление дубликатов из hard_skills
 # ============================================================
 def clean_duplicates_in_skills(skills):
-    """
-    Удаляет дубликаты из каждой категории hard_skills,
-    сравнивая имена без регистра.
-    """
+    """Удаляет дубликаты из каждой категории hard_skills."""
     if not isinstance(skills, dict):
         return {}
 
@@ -184,7 +191,6 @@ def clean_duplicates_in_skills(skills):
                 name = item.get("name", "").strip().lower()
             else:
                 name = str(item).strip().lower()
-
             if name and name not in seen:
                 unique.append(item)
                 seen.add(name)
@@ -192,3 +198,42 @@ def clean_duplicates_in_skills(skills):
         cleaned[cat] = unique
 
     return cleaned
+
+def fix_project_dates_from_text(projects, original_text):
+    """
+    Восстанавливает реальные даты (start-end) проектов на основе исходного PDF-текста.
+    Если GPT пропустил даты, берёт их из текста по шаблонам:
+    - 07.2019 – 12.2021
+    - 09/2020 – 04/2024
+    - 2020 – Present
+    """
+    if not projects or not original_text:
+        return projects
+
+    text = original_text
+    date_pattern = re.compile(
+        r"(\d{2}[./]\d{2,4})\s*[–-]\s*(\d{2}[./]\d{2,4}|Present|Jetzt|Heute|Aktuell)",
+        flags=re.IGNORECASE
+    )
+    year_pattern = re.compile(
+        r"(\b(19|20)\d{2}\b)\s*[–-]\s*((?:19|20)?\d{2}|Present|Jetzt|Heute|Aktuell)",
+        flags=re.IGNORECASE
+    )
+
+    found_dates = date_pattern.findall(text) + year_pattern.findall(text)
+
+    def normalize_date(raw):
+        raw = raw.replace("/", ".")
+        raw = re.sub(r"(?i)(Jetzt|Heute|Aktuell)", "Present", raw)
+        return raw.strip()
+
+    # Список всех найденных диапазонов из текста
+    ranges = [f"{normalize_date(m[0])} – {normalize_date(m[1])}" if len(m) > 1 else "" for m in found_dates]
+
+    # Присваиваем их проектам (если duration пустой)
+    for i, proj in enumerate(projects):
+        if not proj.get("duration") or proj["duration"].lower() in ["present", ""]:
+            if i < len(ranges):
+                proj["duration"] = ranges[i]
+
+    return projects
