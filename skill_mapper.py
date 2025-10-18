@@ -1,13 +1,20 @@
 import re
 from tech_mapping import TECH_MAPPING
 
+
+# ============================================================
+# 1️⃣ Основная функция нормализации Hard Skills
+# ============================================================
 def remap_hard_skills(hard_skills_from_gpt):
     """
-    Vereinheitlicht die Struktur von 'hard_skills':
-    - Beibehaltung von 'name' und 'years_experience' aus der GPT-Ausgabe
-    - Ordnet Tools anhand von TECH_MAPPING Kategorien zu
-    - Entfernt Duplikate und bereinigt leere Einträge
+    Унифицирует и нормализует структуру hard_skills:
+    - Проверяет каждое значение (dict или str)
+    - Приводит имена к стандартным категориям из TECH_MAPPING
+    - Удаляет дубликаты
+    - Расширяет категории, если GPT вернул новые
     """
+
+    # Базовая структура
     mapped_skills = {
         "cloud_platforms": [],
         "devops_iac": [],
@@ -24,14 +31,19 @@ def remap_hard_skills(hard_skills_from_gpt):
         "monitoring_security": [],
         "security": [],
         "ai_ml_tools": [],
-        "infrastructure_os": [],   # ✅ добавлено (соответствует TECH_MAPPING)
-        "other_tools": []
+        "infrastructure_os": [],
+        "other_tools": [],
     }
 
+    # Если GPT вернул None или не dict — выходим
+    if not isinstance(hard_skills_from_gpt, dict):
+        return mapped_skills
 
-
-    # Jedes Tool prüfen und zuordnen
+    # Проходим по всем категориям и их значениям
     for category, tools in hard_skills_from_gpt.items():
+        if not isinstance(tools, list):
+            continue
+
         for item in tools:
             if isinstance(item, dict):
                 name = item.get("name", "").strip()
@@ -43,45 +55,52 @@ def remap_hard_skills(hard_skills_from_gpt):
             if not name:
                 continue
 
-            # Kategorie durch TECH_MAPPING prüfen
-            matched = False
+            # Проверяем соответствие TECH_MAPPING
+            matched_category = None
             for pattern, mapped_category in TECH_MAPPING.items():
                 if re.search(pattern, name.lower()):
-                    mapped_skills[mapped_category].append({
-                        "name": name,
-                        "years_experience": years
-                    })
-                    matched = True
+                    matched_category = mapped_category
                     break
 
-            if not matched:
-                mapped_skills["other_tools"].append({
-                    "name": name,
-                    "years_experience": years
-                })
+            # Если не найдено в маппинге — помещаем в "other_tools"
+            target_cat = matched_category or "other_tools"
 
-    # Duplikate entfernen
-    for cat in mapped_skills:
-        unique = []
+            # Добавляем в результирующую категорию
+            mapped_skills.setdefault(target_cat, []).append({
+                "name": name,
+                "years_experience": years
+            })
+
+    # ============================================================
+    # 2️⃣ Удаление дубликатов и сортировка
+    # ============================================================
+    for cat, tools in mapped_skills.items():
         seen = set()
-        for t in mapped_skills[cat]:
-            key = t["name"].lower()
+        unique_tools = []
+        for tool in tools:
+            key = tool["name"].strip().lower().replace(" ", "")
             if key not in seen:
                 seen.add(key)
-                unique.append(t)
-        mapped_skills[cat] = unique
+                unique_tools.append(tool)
+        # Сортируем по алфавиту
+        mapped_skills[cat] = sorted(unique_tools, key=lambda x: x["name"].lower())
 
     return mapped_skills
 
+
+# ============================================================
+# 🔍 Отладочный запуск
+# ============================================================
 if __name__ == "__main__":
     import json
-    # Testmodus: vorhandene JSON-Datei einlesen
-    with open("data_output/result_2.json", "r", encoding="utf-8") as f:
-        data = json.load(f)
 
-    original_skills = data.get("hard_skills", {})
-    remapped = remap_hard_skills(original_skills)
+    # Пример теста
+    test_data = {
+        "cloud_platforms": ["AWS", "Azure", "Google Cloud"],
+        "ci_cd_tools": ["Jenkins", "GitLab", "Azure DevOps"],
+        "programming_languages": ["Python", "C++", "JavaScript"],
+        "misc": ["Nginx", "Linux"]
+    }
 
-    import pprint
-    # Ausgabe der neu zugeordneten Hard Skills
-    pprint.pprint(remapped, sort_dicts=False)
+    remapped = remap_hard_skills(test_data)
+    print(json.dumps(remapped, indent=2, ensure_ascii=False))

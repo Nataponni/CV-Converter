@@ -47,6 +47,8 @@ styles["Heading3"].leading = HEADING_FONT_SIZE + 1
 styles["Heading3"].spaceAfter = 4
 
 FIRM_COLOR = colors.HexColor("#2196F3")
+HEADER_GRADIENT_START = colors.HexColor("#d9effb")
+HEADER_GRADIENT_END = colors.HexColor("#90cff4")
 
 # --- Project Styles ---
 project_card_title_style = ParagraphStyle(
@@ -80,6 +82,55 @@ project_card_stack_style = ParagraphStyle(
     italic=True,
     spaceAfter=2,
 )
+
+# ============================================================
+#  HEADER / FOOTER
+# ============================================================
+def resolve_logo_path():
+    """Находит логотип в папке data_input"""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    logo_path = os.path.join(base_dir, "data_input", "logo.jpg")  # или logo.jpg
+    if os.path.exists(logo_path):
+        return logo_path
+    else:
+        return None
+
+
+def add_inpro_header_footer(canvas, doc):
+    """Фирменный хедер + футер Inpro Analytics с логотипом"""
+    width, height = A4
+    canvas.saveState()
+
+    # Logo
+    logo_path = resolve_logo_path()
+    page_width, page_height = A4
+    logo_height = 58  # фиксированная высота логотипа (можно регулировать)
+
+    if logo_path:
+        try:
+            canvas.drawImage(
+                logo_path,
+                0, page_height - logo_height,     # X=0, чтобы начать с самого левого края
+                width=page_width, height=logo_height,  # растягиваем на всю ширину страницы
+                preserveAspectRatio=False,        # ⚠️ отключаем сохранение пропорций
+                mask="auto"
+            )
+        except Exception as e:
+            print(f"⚠️ Ошибка при вставке логотипа: {e}")
+
+
+ 
+    # Footer
+    footer_lines = ["www.inpro-analytics.at", "recruiting@inpro-analytics.at", "Austria, Graz"]
+    canvas.setFont("Roboto", 8)
+    canvas.setFillColor(colors.HexColor("#A9A8A8"))
+    y = 20
+    for line in footer_lines:
+        canvas.drawString(25, y, line)
+        y += 10
+
+    canvas.restoreState()
+
 
 # --- Утилиты ---
 def sanitize_filename(name: str) -> str:
@@ -459,11 +510,11 @@ def make_projects_section(projects, styles):
 
         # --- Добавление карточек в поток ---
         if not first_card_done:
-            elements.append(KeepTogether([section_title, Spacer(1, 10), card, Spacer(1, 8)]))
+            elements.append(KeepTogether([section_title, Spacer(1, 10), card, Spacer(1, 20)]))
             first_card_done = True
             cards_on_page = 1
         else:
-            elements.append(KeepTogether([card, Spacer(1, 8)]))
+            elements.append(KeepTogether([card, Spacer(1, 20)]))
             cards_on_page += 1
 
         # --- Две карточки на страницу ---
@@ -520,6 +571,7 @@ def make_skills_overview_box(data, styles):
                                  fontSize=11, alignment=TA_CENTER,
                                  textColor=colors.HexColor("#222e3a"))
 
+    # --- таблица ---
     rows = [[
         Paragraph("Category", header_left),
         Paragraph("Tools", header_left),
@@ -532,7 +584,7 @@ def make_skills_overview_box(data, styles):
         if years <= 0:
             continue  # ⬅️ пропускаем строки без опыта
 
-        tools = ", ".join(sorted(set(values["tools"])))
+        tools = ", ".join(sorted(set(values["tools"])) or [])
         rows.append([
             Paragraph(format_category_name(cat), cell_left),
             Paragraph(tools, cell_left),
@@ -542,18 +594,17 @@ def make_skills_overview_box(data, styles):
     table = Table(rows, colWidths=[60*mm, 80*mm, 30*mm], hAlign="LEFT")
     style = TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8f2fc")),
         ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
         ("TOPPADDING", (0, 0), (-1, 0), 6),
     ])
 
+    # Чередование строк (серо-белые)
     for i in range(1, len(rows)):
         style.add("BACKGROUND", (0, i), (-1, i),
-                  colors.whitesmoke if i % 2 == 0 else colors.white)
+                  colors.whitesmoke if i % 2 == 1 else colors.white)
     table.setStyle(style)
 
     return [KeepTogether([title, Spacer(1, 8), table, Spacer(1, 12)])]
-
 
 # --- Главная сборка ---
 def create_pretty_first_section(json_data, output_dir=".", prefix="CV"):
@@ -564,7 +615,7 @@ def create_pretty_first_section(json_data, output_dir=".", prefix="CV"):
 
     doc = SimpleDocTemplate(out_path, pagesize=A4,
                             leftMargin=18*mm, rightMargin=18*mm,
-                            topMargin=18*mm, bottomMargin=18*mm)
+                            topMargin=25*mm, bottomMargin=18*mm)
 
     elements = []
     elements += make_first_page_section(json_data, styles)
@@ -577,12 +628,16 @@ def create_pretty_first_section(json_data, output_dir=".", prefix="CV"):
     if skills_overview_box:
         elements.append(KeepTogether([Spacer(1, 6), *skills_overview_box]))
 
-    doc.build(elements)
+
+    
+    # Построение PDF с фирменным хедером и футером
+    doc.build(elements, onFirstPage=add_inpro_header_footer, onLaterPages=add_inpro_header_footer)
+
     return out_path
 
 # --- Запуск ---
 if __name__ == "__main__":
-    with open("data_output/result_1.json", "r", encoding="utf-8") as f:
+    with open("data_output/result_Manuel.json", "r", encoding="utf-8") as f:
         data = json.load(f)
     pdf_path = create_pretty_first_section(data)
     print(f"✅ PDF создан: {pdf_path}")

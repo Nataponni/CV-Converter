@@ -1,7 +1,7 @@
 {
   "full_name": "Adebayo Adeyeye",
   "title": "Senior DevOps Engineer",
-  "education": "Landmark University, Nigeria. B.Sc. Accounting (Oct 2011 - July 2015)",
+  "education": "Landmark University, Nigeria. B.Sc. Accounting, Oct 2011 - July 2015",
   "languages": [
     {
       "language": "English",
@@ -9,18 +9,22 @@
     }
   ],
   "domains": [
-    "Cloud",
-    "DevOps",
-    "Infrastructure",
-    "Infrastructure as Code (IaC)",
+    "Analytics",
+    "Automation",
     "CI/CD",
+    "Cloud",
+    "CloudOps",
     "Containers",
+    "DevOps",
+    "Infrastructure as Code",
+    "Machine Learning",
+    "Manufacturing",
+    "Monitoring",
+    "Observability",
     "Orchestration",
-    "Monitoring & Observability",
-    "Security",
-    "Automation"
+    "Security"
   ],
-  "profile_summary": "A seasoned DevOps and cloud engineer with eight years of IT experience delivering infrastructure design, automation, and operations across AWS, Azure and GCP. Demonstrates strong expertise in IaC (Terraform, Pulumi, ARM/Bicep, CloudFormation), containerization and orchestration (Docker, Kubernetes, ECS, AKS), CI/CD pipeline design (Jenkins, Azure DevOps, GitLab) and production monitoring (Datadog, CloudWatch, Prometheus). Skilled in cloud security controls, incident reduction, automation of deployments, and leading cross-functional teams to build resilient, scalable, and secure cloud-native platforms.",
+  "profile_summary": "Adebayo Adeyeye is a Senior DevOps engineer with eight years of IT experience in designing, automating and operating secure, scalable cloud platforms. He architects Infrastructure-as-Code using Terraform, Pulumi, CloudFormation and Bicep, and builds robust CI/CD pipelines with Jenkins, GitLab and Azure DevOps. He operates containerized workloads on Kubernetes, AKS and ECS and automates deployments using Helm and Kustomize. He implements observability with Datadog, Prometheus and Grafana, enforces cloud security controls such as IAM, WAF and GuardDuty, leads cross-functional teams, and drives automation to reduce operational risk and standardize deployments.",
   "hard_skills": {
     "cloud_platforms": [
       {
@@ -28,23 +32,15 @@
         "years_experience": 0
       },
       {
-        "name": "Azure",
-        "years_experience": 0
-      },
-      {
-        "name": "GCP",
-        "years_experience": 0
-      },
-      {
-        "name": "DigitalOcean",
-        "years_experience": 0
-      },
-      {
         "name": "AWS CDK",
         "years_experience": 0
       },
       {
-        "name": "AWS Shield",
+        "name": "AWS Config",
+        "years_experience": 0
+      },
+      {
+        "name": "AWS Inspector",
         "years_experience": 0
       },
       {
@@ -52,11 +48,43 @@
         "years_experience": 0
       },
       {
-        "name": "AWS Config",
+        "name": "Azure",
+        "years_experience": 0
+      },
+      {
+        "name": "Digital Ocean",
+        "years_experience": 0
+      },
+      {
+        "name": "GCP",
+        "years_experience": 0
+      },
+      {
+        "name": "Google Cloud Storage",
         "years_experience": 0
       }
     ],
     "devops_iac": [
+      {
+        "name": "Ansible",
+        "years_experience": 0
+      },
+      {
+        "name": "ARM Templates",
+        "years_experience": 0
+      },
+      {
+        "name": "Bicep",
+        "years_experience": 0
+      },
+      {
+        "name": "CloudFormation",
+        "years_experience": 0
+      },
+      {
+        "name": "Morpheus",
+        "years_experience": 0
+      },
       {
         "name": "Pulumi",
         "years_experience": 0
@@ -66,45 +94,13 @@
         "years_experience": 0
       },
       {
-        "name": "Ansible",
-        "years_experience": 0
-      },
-      {
-        "name": "CloudFormation",
-        "years_experience": 0
-      },
-      {
-        "name": "ARM templates",
-        "years_experience": 0
-      },
-      {
-        "name": "Bicep",
-        "years_experience": 0
-      },
-      {
-        "name": "Morpheus",
+        "name": "Terraform Modules",
         "years_experience": 0
       }
     ],
     "ci_cd_tools": [
       {
-        "name": "Jenkins",
-        "years_experience": 0
-      },
-      {
-        "name": "GitLab CI/CD",
-        "years_experience": 0
-      },
-      {
         "name": "Azure DevOps Pipelines",
-        "years_experience": 0
-      },
-      {
-        "name": "Maven",
-        "years_experience": 0
-      },
-      {
-        "name": "Nexus",
         "years_experience": 0
       },
       {
@@ -114,9 +110,29 @@
       {
         "name": "GitLab",
         "years_experience": 0
+      },
+      {
+        "name": "GitLab CI/CD",
+        "years_experience": 0
+      },
+      {
+        "name": "Jenkins",
+        "years_experience": 0
+      },
+      {
+        "name": "Maven",
+        "years_experience": 0
+      },
+      {
+        "name": "Nexus",
+        "years_experience": 0
       }
     ],
     "containers_orchestration": [
+      {
+        "name": "AKS",
+        "years_experience": 0
+      },
       {
         "name": "Docker",
         "years_experience": 0
@@ -126,43 +142,35 @@
         "years_experience": 0
       },
       {
-        "name": "Kubernetes",
+        "name": "Helm",
         "years_experience": 0
       },
       {
-        "name": "Helm",
+        "name": "Kubernetes",
         "years_experience": 0
       },
       {
         "name": "Kustomize",
         "years_experience": 0
-      },
-      {
-        "name": "AKS",
-        "years_experience": 0
       }
     ],
     "programming_languages": [
-      {
-        "name": "TypeScript",
-        "years_experience": 0
-      },
       {
         "name": "Bash",
         "years_experience": 0
       },
       {
-        "name": "Node.js",
+        "name": "JavaScript",
         "years_experience": 0
       },
       {
-        "name": "JavaScript",
+        "name": "TypeScript",
         "years_experience": 0
       }
     ],
     "databases": [
       {
-        "name": "PostgreSQL",
+        "name": "BigQuery",
         "years_experience": 0
       },
       {
@@ -174,15 +182,11 @@
         "years_experience": 0
       },
       {
-        "name": "BigQuery",
+        "name": "PostgreSQL",
         "years_experience": 0
       }
     ],
     "backend": [
-      {
-        "name": "Microservices",
-        "years_experience": 0
-      },
       {
         "name": "API Gateway",
         "years_experience": 0
@@ -190,15 +194,11 @@
     ],
     "frontend": [
       {
-        "name": "HTML",
-        "years_experience": 0
-      },
-      {
         "name": "CSS",
         "years_experience": 0
       },
       {
-        "name": "React",
+        "name": "HTML",
         "years_experience": 0
       }
     ],
@@ -207,6 +207,14 @@
     "bi_tools": [],
     "analytics": [],
     "monitoring_security": [
+      {
+        "name": "CloudTracker",
+        "years_experience": 0
+      },
+      {
+        "name": "CloudTrail",
+        "years_experience": 0
+      },
       {
         "name": "CloudWatch",
         "years_experience": 0
@@ -226,51 +234,15 @@
       {
         "name": "Splunk",
         "years_experience": 0
-      },
-      {
-        "name": "Application Insights",
-        "years_experience": 0
-      },
-      {
-        "name": "Log Analytics",
-        "years_experience": 0
-      },
-      {
-        "name": "Datadog APM",
-        "years_experience": 0
-      },
-      {
-        "name": "CloudTrail",
-        "years_experience": 0
-      },
-      {
-        "name": "CloudTracker",
-        "years_experience": 0
       }
     ],
     "security": [
-      {
-        "name": "IAM",
-        "years_experience": 0
-      },
-      {
-        "name": "WAF",
-        "years_experience": 0
-      },
       {
         "name": "GuardDuty",
         "years_experience": 0
       },
       {
-        "name": "Security Groups",
-        "years_experience": 0
-      },
-      {
-        "name": "NACL",
-        "years_experience": 0
-      },
-      {
-        "name": "Snyk",
+        "name": "IAM",
         "years_experience": 0
       },
       {
@@ -278,56 +250,64 @@
         "years_experience": 0
       },
       {
-        "name": "Inspector",
+        "name": "NaCl",
+        "years_experience": 0
+      },
+      {
+        "name": "Security Groups",
         "years_experience": 0
       },
       {
         "name": "Security Monkey",
+        "years_experience": 0
+      },
+      {
+        "name": "Shield",
+        "years_experience": 0
+      },
+      {
+        "name": "Snyk",
+        "years_experience": 0
+      },
+      {
+        "name": "WAF",
         "years_experience": 0
       }
     ],
     "ai_ml_tools": [],
     "infrastructure_os": [
       {
-        "name": "Linux (CentOS, RedHat)",
+        "name": "CentOS",
         "years_experience": 0
       },
       {
-        "name": "Windows Server 2012 R2",
+        "name": "Linux",
+        "years_experience": 0
+      },
+      {
+        "name": "RedHat",
         "years_experience": 0
       },
       {
         "name": "VMware ESX",
         "years_experience": 0
+      },
+      {
+        "name": "Windows Server 2012 R2",
+        "years_experience": 0
       }
     ],
     "other_tools": [
       {
-        "name": "jQuery",
+        "name": "Amazon RDS",
         "years_experience": 0
       },
       {
-        "name": "Google Dataflow",
+        "name": "Apache",
         "years_experience": 0
       },
       {
-        "name": "GCS",
-        "years_experience": 0
-      },
-      {
-        "name": "Puppet",
-        "years_experience": 0
-      },
-      {
-        "name": "Windows 7/8/10",
-        "years_experience": 0
-      },
-      {
-        "name": "macOS",
-        "years_experience": 0
-      },
-      {
-        "name": "vSphere",
+        "name": "Dataflow",
         "years_experience": 0
       },
       {
@@ -335,28 +315,50 @@
         "years_experience": 0
       },
       {
-        "name": "Dockerfile",
+        "name": "jQuery",
         "years_experience": 0
       },
       {
-        "name": "CLI scripting",
+        "name": "macOS",
+        "years_experience": 0
+      },
+      {
+        "name": "Nginx",
+        "years_experience": 0
+      },
+      {
+        "name": "NodeJs",
+        "years_experience": 0
+      },
+      {
+        "name": "ReactJs",
+        "years_experience": 0
+      },
+      {
+        "name": "TCPDF",
+        "years_experience": 0
+      },
+      {
+        "name": "Windows 7/8/10",
         "years_experience": 0
       }
     ]
   },
   "projects_experience": [
     {
-      "project_title": "Senior DevOps Engineer — Accenture (Cloud Ops / Platform)",
-      "overview": "Led design and operation of cloud infrastructure and CI/CD for multi-environment deployments across Azure and AWS. Implemented IaC, container orchestration, observability and deployment automation to improve availability and reduce MTTR.",
+      "project_title": "Accenture, Dublin Ireland - Senior DevOps Engineer",
+      "overview": "Senior DevOps Engineer delivering IaC, AKS orchestration, CI/CD and monitoring for cloud environments across Azure and AWS.",
       "role": "Senior DevOps Engineer",
       "duration": "May 2020 – August 2025",
       "responsibilities": [
-        "Architected IaC using ARM templates and Bicep",
-        "Provisioned containerized workloads on AKS with HPA and PDB",
-        "Developed Azure DevOps YAML pipelines with gated approvals",
-        "Designed and deployed infrastructure using Pulumi (TypeScript)",
-        "Packaged and deployed microservices using Helm charts",
-        "Implemented Datadog APM and infrastructure monitoring"
+        "Architected and maintained IaC using ARM templates and Bicep",
+        "Provisioned and orchestrated workloads on Azure Kubernetes Service",
+        "Developed Azure DevOps YAML CI/CD pipelines with gated approvals",
+        "Designed and deployed cloud infrastructure with Pulumi and TypeScript",
+        "Packaged and deployed microservices to Kubernetes via Helm charts",
+        "Implemented Datadog APM and infrastructure monitoring reducing MTTR",
+        "Managed AWS EC2, Auto Scaling, VPCs, and ELB configurations",
+        "Automated provisioning with CloudFormation and Terraform modules"
       ],
       "tech_stack": [
         "AWS",
@@ -370,93 +372,100 @@
         "Ansible",
         "Linux",
         "Pulumi",
-        "ARM templates",
-        "Bicep",
+        "TypeScript",
         "AKS",
-        "Helm"
+        "Helm",
+        "Datadog"
       ]
     },
     {
-      "project_title": "Cloud DevOps Engineer — Access Bank PLC (Platform & Automation)",
-      "overview": "Implemented cloud-native infrastructure, multi-cloud automation and containerized deployments. Focused on IaC, security hardening, monitoring integration and CI/CD pipeline delivery across Azure, AWS and GCP.",
+      "project_title": "Access Bank PLC, Lagos Nigeria - Cloud DevOps Engineer",
+      "overview": "Cloud DevOps Engineer focused on multi-cloud automation, IaC, containerization, observability and cloud security across Azure, AWS and GCP.",
       "role": "Cloud DevOps Engineer",
       "duration": "September 2015 – April 2020",
       "responsibilities": [
-        "Engineered scalable infrastructure using Pulumi with TypeScript",
-        "Packaged microservices and deployed via Helm to Kubernetes",
-        "Integrated Datadog APM and centralized observability",
-        "Optimized EC2 EBS volumes for higher throughput",
-        "Automated multi-cloud provisioning using Morpheus",
-        "Hardened cloud security using GuardDuty, Macie, Inspector"
+        "Engineered cloud-native infrastructure using Pulumi with TypeScript",
+        "Packaged and deployed microservices to Kubernetes via Helm Charts",
+        "Integrated Datadog APM and infrastructure monitoring",
+        "Optimized EBS volumes for EC2 throughput improvements",
+        "Automated deployments using Morpheus with AWS integration",
+        "Hardened cloud security using GuardDuty, Macie, Inspector",
+        "Deployed GCP services: Compute Engine, Cloud Run, Dataflow, BigQuery",
+        "Provisioned infrastructure with Terraform and Ansible"
       ],
       "tech_stack": [
         "AWS",
         "Azure",
         "GCP",
         "Terraform",
+        "Pulumi",
         "Docker",
         "Kubernetes",
-        "Jenkins",
-        "GitLab",
-        "Ansible",
-        "Linux",
-        "Pulumi",
         "Helm",
+        "Ansible",
         "Datadog",
-        "Morpheus",
-        "ARM templates"
+        "CloudFormation",
+        "ECS",
+        "AKS",
+        "MySQL",
+        "PostgreSQL"
       ]
     }
   ],
   "skills_overview": [
     {
       "category": "Cloud",
-      "tool": "AWS, Azure, GCP",
+      "tool": "AWS",
       "years_of_experience": "5"
     },
     {
       "category": "IaC",
-      "tool": "Terraform, Pulumi, CloudFormation, ARM/Bicep",
+      "tool": "Terraform",
       "years_of_experience": "5"
     },
     {
       "category": "Containers",
-      "tool": "Docker, ECS",
+      "tool": "Docker",
       "years_of_experience": "5"
     },
     {
       "category": "Orchestration",
-      "tool": "Kubernetes, AKS, Helm",
-      "years_of_experience": "4"
+      "tool": "Kubernetes",
+      "years_of_experience": "5"
     },
     {
       "category": "CI/CD",
-      "tool": "Jenkins, GitLab CI, Azure DevOps, Maven, Nexus",
+      "tool": "Jenkins",
       "years_of_experience": "8"
     },
     {
       "category": "Monitoring",
-      "tool": "Datadog, CloudWatch, Prometheus, Grafana",
+      "tool": "Datadog",
       "years_of_experience": "5"
     },
     {
       "category": "Databases",
-      "tool": "PostgreSQL, MySQL, MongoDB, BigQuery",
+      "tool": "PostgreSQL",
       "years_of_experience": "5"
     },
     {
       "category": "Security",
-      "tool": "IAM, WAF, GuardDuty, Snyk, Macie, Inspector",
+      "tool": "IAM/WAF",
       "years_of_experience": "5"
     },
     {
       "category": "Programming",
-      "tool": "TypeScript, Node.js, Bash, JavaScript",
+      "tool": "Bash/NodeJs/TypeScript",
       "years_of_experience": "5"
     },
     {
       "category": "OS/Infrastructure",
-      "tool": "Linux (CentOS/RedHat), Windows Server, VMware ESX",
+      "tool": "Linux",
+      "years_of_experience": "8"
+    },
+    {
+      "category": "DevOps Tools",
+      "tool": "GitLab",
       "years_of_experience": "8"
     }
   ],

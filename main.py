@@ -2,112 +2,122 @@ import os
 import re
 import time
 
-from pdf_processor import extract_text_by_page, clean_text, clean_responsibilities
-from chatgpt_client import ask_chatgpt
-from utils import save_json, has_empty_fields
-from fill_cv import fill_missing_fields
+from pdf_processor import prepare_cv_text
+from chatgpt_client import (
+    extract_structure_with_gpt,
+    extract_details_with_gpt,
+    auto_fix_missing_fields,
+)
 from skill_mapper import remap_hard_skills
+from postprocess import unify_languages, unify_durations, clean_duplicates_in_skills
+from utils import save_json, has_empty_fields
+from schema import validate_schema
 
+
+# Пути к файлам
 INPUT_PDF = "data_input/CV_Kunde_1.pdf"
 OUTPUT_JSON = "data_output/result_1.json"
 
 
+# ============================================================
+# 🔹 Вспомогательные функции
+# ============================================================
 def filter_explicit_domains(text: str, domains: list[str]) -> list[str]:
     """
-    Sucht explizit erwähnte 'Domains' im Text (z. B. FinTech, AI, Healthcare).
-    Gibt nur diejenigen zurück, die tatsächlich im Text vorkommen.
+    Расширяет поиск доменов по ключевым словам и контексту.
     """
-    match = re.search(r"(Domains\s*[:\-]?\s*)([\s\S]{0,50C0})", text, re.IGNORECASE)
-    if not match:
-        return []
+    domain_keywords = {
+        "Machine Learning": ["machine learning", "ml", "deep learning", "neural network"],
+        "AI": ["artificial intelligence", "ai model", "generative ai"],
+        "Data Engineering": ["data pipeline", "data ingestion", "etl", "databricks", "snowflake"],
+        "MLOps": ["mlops", "model deployment", "ci/cd for models", "vertex ai", "sagemaker"],
+        "Cloud": ["aws", "azure", "gcp", "kubernetes", "terraform"],
+        "Analytics": ["bi", "power bi", "analytics", "dashboards", "reporting"],
+        "IoT": ["iot", "connected devices", "sensor data", "predictive maintenance"],
+        "Finance": ["banking", "fintech", "risk model", "insurance"],
+        "Healthcare": ["medical", "health", "pharma", "clinical"],
+        "Manufacturing": ["factory", "industrial", "process optimization", "production"],
+    }
 
-    block = match.group(2)
-    return [d for d in domains if re.search(rf"\b{re.escape(d)}\b", block, re.IGNORECASE)]
+    found = set()
+    text_l = text.lower()
+    for domain, keywords in domain_keywords.items():
+        if any(k in text_l for k in keywords):
+            found.add(domain)
+
+    # Сохраняем только домены, которые GPT тоже вернул (если есть)
+    if domains:
+        found.update(domains)
+
+    return sorted(found)
 
 
 def shorten_profile_summary(text: str, max_chars: int = 1200) -> str:
     """
-    Kürzt die Profilbeschreibung (profile_summary) auf eine maximale Länge
-    und entfernt überflüssige Leerzeichen.
+    Обрезает длинное описание профиля, если GPT выдал слишком длинный текст.
     """
     if not text:
         return ""
-    # Doppelte Leerzeichen entfernen
     text = re.sub(r'\s+', ' ', text.strip())
     if len(text) > max_chars:
-        # Wenn zu lang, bis zum letzten Satzende kürzen
-        shortened = text[:max_chars]
-        if "." in shortened:
-            shortened = shortened[:shortened.rfind(".") + 1]
-        return shortened.strip()
+        cut = text[:max_chars]
+        if "." in cut:
+            cut = cut[:cut.rfind(".") + 1]
+        return cut.strip()
     return text.strip()
 
 
+# ============================================================
+# 🔹 Главный пайплайн
+# ============================================================
+
 def main():
-    """
-    Hauptfunktion:
-    1. Extrahiert Text aus einer PDF-Datei.
-    2. Übergibt den gesamten Text an ChatGPT zur Analyse.
-    3. Normalisiert den Bereich 'hard_skills'.
-    4. Filtert Domains, falls sie explizit im Text genannt sind.
-    5. Kürzt die Profilbeschreibung.
-    6. Füllt fehlende Felder (optional) und speichert das Ergebnis als JSON.
-    """
-    start = time.time()
+    start_time = time.time()
+    print("🚀 Starting CV Extraction & Structuring Pipeline v2.0")
 
-    # 1️⃣ Text aus PDF extrahieren und bereinigen
-    pages = extract_text_by_page(INPUT_PDF)
-    full_text = "\n".join(clean_text(p) for p in pages)
+    # 1️⃣ Подготовка текста из PDF
+    prepared_text = prepare_cv_text(INPUT_PDF)
 
-    # 2️⃣ Analyse durch ChatGPT
-    result = ask_chatgpt(full_text)
+    # 2️⃣ GPT Шаг 1 — Извлечение структуры
+    print("\n🧩 Step 1: Extracting CV structure...")
+    structure = extract_structure_with_gpt(prepared_text)
 
-    # 3️⃣ Hard Skills an vereinheitlichte Struktur anpassen
-    result["hard_skills"] = remap_hard_skills(result.get("hard_skills", {}))
+    # 3️⃣ GPT Шаг 2 — Детализация и заполнение данных
+    print("\n🔍 Step 2: Extracting detailed content...")
+    result = extract_details_with_gpt(prepared_text, structure)
 
-    # 4️⃣ Explizit erwähnte Domains erkennen
-    explicit_domains = filter_explicit_domains(full_text, result.get("domains", []))
-
-    if explicit_domains:
-        # Wenn Domains explizit genannt sind – nur diese übernehmen
-        result["domains"] = explicit_domains
-    else:
-        # Sonst bestehende Domain-Liste beibehalten
-        result["domains"] = result.get("domains", [])
-
-    # 5️⃣ Profiltext kürzen und bereinigen
-    result["profile_summary"] = shorten_profile_summary(result.get("profile_summary", ""))
-    
-    # 5b️ Responsibilities kürzen/vereinfachen
-    for project in result.get("projects_experience", []):
-        if "responsibilities" in project:
-            project["responsibilities"] = clean_responsibilities(
-                project["responsibilities"],
-                max_words=12
-            )
-
-    # 6️⃣ Fehlende Felder auffüllen, falls vorhanden
+    # 4️⃣ Автозаполнение пропусков
+    print("\n🤖 Step 3: Auto-filling missing fields...")
     if has_empty_fields(result):
-        result = fill_missing_fields(result)
+        result = auto_fix_missing_fields(result)
 
-    # 7️⃣ Ergebnis als JSON-Datei speichern
-    os.makedirs(os.path.dirname(OUTPUT_JSON), exist_ok=True)
+    # 5️⃣ Проверка и валидация JSON
+    print("\n📏 Step 4: Schema validation...")
+    result = validate_schema(result)
 
-        # 5c️⃣ Проверка: если GPT пропустил duration — ищем даты напрямую в тексте
-    from pdf_processor import extract_dates  # импортируем здесь, чтобы не было циклических зависимостей
-    all_dates = extract_dates(full_text)
+    # 6️⃣ Постобработка данных
+    print("\n🧼 Step 5: Normalizing and cleaning data...")
+    result["hard_skills"] = remap_hard_skills(result.get("hard_skills", {}))
+    result["hard_skills"] = clean_duplicates_in_skills(result["hard_skills"])
+    result["languages"] = unify_languages(result.get("languages", []), original_text=prepared_text)
 
-    for project in result.get("projects_experience", []):
-        if not project.get("duration") or not project["duration"].strip():
-            # если GPT не указал период — пробуем взять ближайшую дату
-            if all_dates:
-                project["duration"] = all_dates.pop(0) if all_dates else ""
+    # 7️⃣ Применение фильтров и сокращение профиля
+    explicit_domains = filter_explicit_domains(prepared_text, result.get("domains", []))
+    if explicit_domains:
+        result["domains"] = explicit_domains
+    result["profile_summary"] = shorten_profile_summary(result.get("profile_summary", ""))
 
+    # 8️⃣ Сохранение JSON результата
     save_json(OUTPUT_JSON, result)
 
-    print(f"\n✅ Finale JSON-Datei gespeichert unter: {OUTPUT_JSON}")
-    print(f"⏱️ Verarbeitungszeit: {time.time() - start:.2f} Sekunden")
+    elapsed = time.time() - start_time
+    print(f"\n✅ Process completed successfully in {elapsed:.2f}s")
+    print(f"💾 Result saved to: {OUTPUT_JSON}")
 
+
+# ============================================================
+# 🔹 Точка входа
+# ============================================================
 
 if __name__ == "__main__":
     main()
