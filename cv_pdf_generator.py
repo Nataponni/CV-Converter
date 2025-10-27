@@ -218,8 +218,34 @@ def make_overview_box(data, styles):
         "programming_languages", "backend", "frontend", "databases",
         "cloud_platforms", "devops_iac", "ci_cd_tools",
         "containers_orchestration", "monitoring_security",
-        "infrastructure_os", "other_tools"
+        "infrastructure_os", "security",
+        "data_engineering", "etl_tools",
+        "bi_tools", "analytics", "ai_ml_tools",
+        "other_tools"
     ]
+    # ✅ Покажем и те категории, которых нет в desired_order, но пришли в JSON
+    rest = [k for k in hard_skills.keys() if k not in desired_order]
+    order = desired_order + rest
+
+    for key in order:
+        tools = hard_skills.get(key, [])
+        if not tools:
+            continue
+
+        # нормализация списка
+        tool_names = []
+        for t in tools:
+            if isinstance(t, dict):
+                name = (t.get("name") or "").strip()
+                if name:
+                    tool_names.append(name)
+            elif isinstance(t, str):
+                s = t.strip()
+                if s:
+                    tool_names.append(s)
+
+        if not tool_names:
+            continue
 
     # ограничитель по количеству элементов в строке
     MAX_ITEMS = 12
@@ -544,18 +570,29 @@ def make_skills_overview_box(data, styles):
 
     grouped = {}
     for item in skills_overview:
-        cat = item.get("category", "").strip()
-        tool = item.get("tool", "").strip()
-        years = item.get("years_of_experience", 0)
-        try:
-            years = int(re.search(r"\d+", str(years)).group())
-        except Exception:
-            years = 0
+        cat = (item.get("category") or "").strip()
+        tools_list = item.get("tools", [])  # ✅ правильный ключ
+        yoe_raw = (str(item.get("years_of_experience", "")).strip())  # для вывода как есть
+
+        # берём максимальное число из строки (поддержит "4.8", "4–5", "5+")
+        nums = re.findall(r"\d+(?:\.\d+)?", yoe_raw)
+        yoe_num = float(nums[-1]) if nums else 0.0
+
+        if not cat:
+            continue
         if cat not in grouped:
-            grouped[cat] = {"tools": [], "max_years": 0}
-        if tool:
-            grouped[cat]["tools"].append(tool)
-        grouped[cat]["max_years"] = max(grouped[cat]["max_years"], years)
+            grouped[cat] = {"tools": [], "max_years_num": 0.0, "yoe_display": "-"}
+
+        # тулсы
+        if isinstance(tools_list, list):
+            grouped[cat]["tools"].extend([str(t).strip() for t in tools_list if str(t).strip()])
+        elif isinstance(tools_list, str) and tools_list.strip():
+            grouped[cat]["tools"].append(tools_list.strip())
+
+        # обновляем максимум и строку для отображения
+        if yoe_num >= grouped[cat]["max_years_num"]:
+            grouped[cat]["max_years_num"] = yoe_num
+            grouped[cat]["yoe_display"] = (yoe_raw or "-")
 
     # --- стили
     header_left = ParagraphStyle("HeaderLeft", parent=styles["Normal"],
@@ -570,6 +607,9 @@ def make_skills_overview_box(data, styles):
     cell_center = ParagraphStyle("CellCenter", parent=styles["Normal"],
                                  fontSize=11, alignment=TA_CENTER,
                                  textColor=colors.HexColor("#222e3a"))
+    cell_tools = ParagraphStyle("CellTools", parent=styles["Normal"],
+                                fontSize=11, leading=13, alignment=TA_LEFT,
+                                wordWrap='CJK', textColor=colors.HexColor("#222e3a"))
 
     # --- таблица ---
     rows = [[
@@ -578,20 +618,31 @@ def make_skills_overview_box(data, styles):
         Paragraph("YoE", header_center),
     ]]
 
-    # 🔹 добавляем только те строки, где YoE > 0
     for cat, values in grouped.items():
-        years = values["max_years"]
-        if years <= 0:
-            continue  # ⬅️ пропускаем строки без опыта
+        # 1) Tools → строка
+        tools_list = values.get("tools", [])
+        tools_str = ", ".join(sorted(set([str(t).strip() for t in tools_list if str(t).strip()]))) or "-"
 
-        tools = ", ".join(sorted(set(values["tools"])) or [])
+        # 2) YoE → берём исходную строку, извлекаем число и округляем, оставляем только цифру
+        yoe_raw = str(values.get("yoe_display", "")).strip()
+        nums = re.findall(r"\d+(?:\.\d+)?", yoe_raw)
+        if nums:
+            yoe_num = round(float(nums[-1]))   # last number (поддержит "4–5", "4.8", "5+")
+            yoe_str = str(int(yoe_num))
+        else:
+            yoe_str = "0"
+
         rows.append([
             Paragraph(format_category_name(cat), cell_left),
-            Paragraph(tools, cell_left),
-            Paragraph(str(years), cell_center),
+            Paragraph(tools_str, cell_tools),   # обязательно стиль с wordWrap='CJK'
+            Paragraph(yoe_str, cell_center),
         ])
 
-    table = Table(rows, colWidths=[60*mm, 80*mm, 30*mm], hAlign="LEFT")
+
+
+
+    table = Table(rows, colWidths=[55 * mm, 95 * mm, 25 * mm], hAlign="LEFT")
+
     style = TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
@@ -602,9 +653,17 @@ def make_skills_overview_box(data, styles):
     for i in range(1, len(rows)):
         style.add("BACKGROUND", (0, i), (-1, i),
                   colors.whitesmoke if i % 2 == 1 else colors.white)
+        
+    # 🔹 Принудительно включаем перенос текста во втором столбце (Tools)
+    style.add("WORDWRAP", (1, 1), (1, -1), None)
+
+    # 🔹 Немного увеличим высоту строк
+    style.add("LEADING", (1, 1), (1, -1), 13)
+        
     table.setStyle(style)
 
-    return [KeepTogether([title, Spacer(1, 8), table, Spacer(1, 12)])]
+    return [title, Spacer(1, 8), table, Spacer(1, 12)]
+
 
 # --- Главная сборка ---
 def create_pretty_first_section(json_data, output_dir=".", prefix="CV"):
@@ -626,7 +685,7 @@ def create_pretty_first_section(json_data, output_dir=".", prefix="CV"):
     elements += projects_section
     skills_overview_box = make_skills_overview_box(json_data, styles)
     if skills_overview_box:
-        elements.append(KeepTogether([Spacer(1, 6), *skills_overview_box]))
+        elements.extend([Spacer(1, 6), *skills_overview_box])
 
 
     
@@ -634,6 +693,37 @@ def create_pretty_first_section(json_data, output_dir=".", prefix="CV"):
     doc.build(elements, onFirstPage=add_inpro_header_footer, onLaterPages=add_inpro_header_footer)
 
     return out_path
+
+# ============================================================
+#  Обёртка для Streamlit — возвращает PDF как байты
+# ============================================================
+import io, os, glob
+
+def generate_report_pdf_bytes(filled_json):
+    """
+    Генерирует PDF через create_pretty_first_section()
+    и возвращает байты для скачивания в Streamlit.
+    """
+    output_dir = "data_output"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # создаём PDF
+    create_pretty_first_section(filled_json, output_dir=output_dir, prefix="CV_Streamlit")
+
+    # ищем последний созданный файл
+    pdf_files = sorted(
+        glob.glob(os.path.join(output_dir, "CV_Streamlit*.pdf")),
+        key=os.path.getmtime,
+        reverse=True
+    )
+    if not pdf_files:
+        raise FileNotFoundError("Не найден созданный PDF-файл после генерации.")
+
+    latest_pdf = pdf_files[0]
+    with open(latest_pdf, "rb") as f:
+        pdf_bytes = f.read()
+
+    return pdf_bytes
 
 # --- Запуск ---
 if __name__ == "__main__":

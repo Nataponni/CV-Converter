@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import logging
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -9,119 +10,98 @@ from openai import OpenAI
 # ============================================================
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
+logging.basicConfig(level=logging.INFO)
 
 # ============================================================
 # 🧠 Основная функция вызова GPT
 # ============================================================
 def ask_chatgpt(text, mode="details", base_structure=None):
     """
-    Универсальная функция для работы с GPT.
-    Поддерживает три режима:
-    - mode="structure" → извлекает структуру CV (skeleton)
-    - mode="details"   → заполняет структуру данными
-    - mode="fix"       → исправляет/дополняет пропуски в JSON
-
-    Вся логика промпта сохранена 1:1 из оригинальной версии.
+    Универсальная функция вызова GPT для CV-парсинга.
+    Поддерживает режимы:
+    - structure: выводит структуру JSON
+    - details: извлекает все поля из текста
+    - fix: заполняет пустые поля
     """
-
-    # ============================================================
-    # 🧩 Формируем инструкцию на основе режима
-    # ============================================================
     if mode == "structure":
         task_description = "Extract only the structural JSON skeleton of the CV with all field names but empty values."
     elif mode == "fix":
         task_description = "Repair missing or empty fields logically, keeping the schema intact."
     else:
-        task_description = "Extract structured data from the input text (CV, PDF text) and return ONLY JSON according to the schema."
+        task_description = "Extract structured CV data from text and return strictly formatted JSON only."
 
-    # ============================================================
-    # 📜 Твой оригинальный промпт (полностью сохранён)
-    # ============================================================
+    allowed_categories = [
+        "cloud_platforms", "devops_iac", "monitoring_security", "programming_languages",
+        "containers_orchestration", "ci_cd_tools", "ai_ml_tools", "databases",
+        "backend", "frontend", "security", "data_engineering", "etl_tools",
+        "bi_tools", "analytics", "infrastructure_os", "other_tools"
+    ]
+
     prompt = f"""
 TASK: {task_description}
 
 INSTRUCTIONS:
+
+- Extract a complete, structured JSON strictly following the provided SCHEMA.
+- Detect the candidate’s actual domain (e.g., Cloud, DevOps, BI, Data Engineering) based on tools, project content, and terminology.
+- Avoid assumptions — rely only on what's clearly stated or strongly implied in the resume.
+
+=== PROJECTS ===
 - In "projects_experience":
-  * Extract **all** distinct project, employment, or consulting entries mentioned in the CV — there is **no limit** on the number of projects.
-    Include entries even if they belong to the same employer or overlap in time.
-  * Always extract "duration" — include any dates, years, or ranges (e.g., "Jan 2022 – May 2024", "2021 – Present").
-    Never leave it empty; if missing, infer approximate ranges from context or chronology.
-  * Extract "responsibilities" as short, factual bullet points (max 12 words each),
-    preserving original action verbs (e.g., "implemented", "designed", "deployed", "optimized").
-    Remove filler phrases such as "responsible for", "helped to", "involved in".
-  * Include **up to 6–8 bullet points per project**, prioritizing the most technical, leadership, or high-impact activities.
-  * If multiple projects share time ranges or overlap, still repeat full durations.
-    Do not merge overlapping or related projects — list each one separately if they mention
-    different clients, employers, or technical focuses.
-  * Retain all explicit client or employer names if mentioned.
+  * Always include the full "duration" as written (e.g., "Jul 2021 – Present").
+  * Use concise, technical bullet points (≤12 words) in "responsibilities", starting with action verbs.
+  * Extract all real, clearly separate projects or job positions.
+  * Do not artificially split one job or role into multiple entries.
+  * If multiple responsibilities belong to the same employer and time period, keep them as one project.
 
-- Extract values only if they clearly appear or are strongly implied in the text.
-- If the document language is clearly English, set:
-  "languages": [{{"language": "English", "level": "Fluent"}}].
+  === SKILLS ===
+- For "hard_skills" and "skills_overview":
+  * Use ONLY these fixed categories:
+    cloud_platforms, devops_iac, monitoring_security, programming_languages,
+    containers_orchestration, ci_cd_tools, ai_ml_tools, databases,
+    backend, frontend, security, data_engineering, etl_tools, bi_tools,
+    analytics, infrastructure_os, other_tools
 
-- Do not invent data, but infer when the context is strong
-  (e.g. English-language university → "English"; AWS, Terraform, Jenkins → "Cloud" + "DevOps" domains).
+  * Do NOT merge or invent new categories like "BI / Analytics" — always split correctly.
+  * Each tool must be placed in only ONE most relevant category.
+  * Tools like "Git", "Excel", "Outlook", "Power Platform" — only use "other_tools" if nothing else fits.
+  * Avoid mixing tools in one item (e.g., don't write "Python / SQL" — create separate entries).
 
-- For list-type fields (skills, tools, domains, languages):
-  * Keep items unique (no duplicates).
-  * Include all explicitly mentioned or clearly implied tools.
-  * Use consistent categorization according to TECH_MAPPING
-    (e.g. Terraform → devops_iac, Datadog → monitoring_security).
-  * For "hard_skills", keep 5–8 representative items per category when available.
+- For "skills_overview":
+  * Include all tools used in projects or summary.
+  * Estimate approximate "years_of_experience" logically (e.g., from project durations or global statements like "5+ years with Azure").
+  * Output must include ≥10 distinct categories.
+  * Each row must follow this format: {{ "category": "", "tools": [], "years_of_experience": "" }}
+  * Always extract actual tools listed under each category in the CV, even if they appear in the same line as the category or year.
+  * Do not leave "tools" empty — extract at least one tool per category if mentioned anywhere in the CV.
 
-- When years of experience are mentioned globally
-  (e.g. "8 years in IT", "5+ years with AWS"),
-  propagate approximate values into related tools or categories
-  (e.g. AWS → 5, Terraform → 5, CI/CD → 8).
+=== PROFILE SUMMARY ===
+- Write a technical, third-person summary (80–100 words) describing actual domains, tools, and strengths.
+- Align this summary strictly with real CV content — don't invent.
 
-- Use the following fixed skill categories under "hard_skills":
-  cloud_platforms, devops_iac, monitoring_security, programming_languages,
-  containers_orchestration, ci_cd_tools, ai_ml_tools, databases,
-  backend, frontend, security, other_tools.
+=== LANGUAGES ===
+- Extract only explicitly mentioned languages and their levels (e.g., "German: native", "English: C1").
+- Recognize section titles such as "Languages", "Language Skills", "Sprachen", or "Sprachkenntnisse".
+- Do NOT infer any languages that are not explicitly written in the CV.
+- Detect levels written as “native”, “fluent”, “C2”, “B1”, etc.
+- If no languages are mentioned, return an empty list: []
+- Output format:
+  "languages": [
+      {{"language": "German", "level": "C2"}},
+      {{"language": "English", "level": "C1"}}
+  ]
 
-- If a value is missing or uncertain — return "" or [].
-- Always output a fully populated JSON object following the schema exactly.
-- Output must be valid JSON only — no markdown, no comments, no prose.
+=== DATE FORMATTING ===
+- Convert formats like:
+  * "07.21 –" → "Jul 2021 – Present"
+  * "07.21 – 12.23" → "Jul 2021 – Dec 2023"
+  * "2020" → "Jan 2020 – Dec 2020"
+  * German words like "Jetzt", "Heute", "Derzeit" → "Present"
 
-- "profile_summary":
-  Must be a rich, technical, multi-sentence paragraph (80–100 words)
-  summarizing cloud, DevOps, IaC, CI/CD, security, monitoring, automation and leadership experience.
-  Use formal tone, third person, and concise phrasing.
-
-- "skills_overview":
-  Must always contain at least 10 categories, including Cloud, IaC, Containers, Orchestration,
-  CI/CD, Monitoring, Databases, Security, Programming, and OS/Infrastructure.
-  Each row should show the most relevant tools and their approximate years of experience (YoE).
-
-- In "projects_experience.tech_stack":
-  Include the most relevant 10–15 technologies in priority order:
-  AWS, Azure, GCP, Terraform, Docker, Kubernetes, Jenkins, GitLab, Ansible, Linux.
-  Do not truncate unless the text contains >12 items.
-
-  - In "hard_skills", prefer completeness over brevity:
-  include all explicitly or implicitly mentioned tools (5–10 per category).
-
-- When you detect any date ranges (e.g. "07.21 – 12.23", "Jan 2022 - May 2024"),
-  always extract them **exactly as written in the text**.
-  However:
-    * If the range uses European numeric format (e.g. "07.21 – 12.23"), 
-      convert each month number to its English month abbreviation 
-      (e.g. "Jul 2021 – Dec 2023").
-    * If a range ends with a dash ("–" or "-") but has no explicit end date, 
-      complete it with "Present" (e.g. "07.21 –" → "Jul 2021 – Present").
-    * If you see any of the words "Jetzt", "Heute", "Aktuell", "Gegenwärtig", or "Derzeit", 
-      interpret them as "Present".
-    * If a single year is written (e.g. "2020"), treat it as "Jan 2020 – Dec 2020".
-  Always put the full, explicit range into the "duration" field of the corresponding project.
-  Never omit, shorten, or modify the range beyond these conversions.
-  Always include both start and end dates.
-  Always prefer the most precise date range if multiple forms appear.
-
-Return all projects as a JSON array under the key "projects_experience".
-Never truncate the list even if it’s long.
-If more than 20 projects exist, include them all.
-
+=== OUTPUT RULES ===
+- Return a single valid JSON object strictly matching the SCHEMA.
+- Do NOT return markdown, explanations, comments, or prose — only JSON.
+- Do NOT hallucinate tools, projects, dates, or titles.
 
 SCHEMA:
 {{
@@ -131,7 +111,7 @@ SCHEMA:
   "languages": [{{"language": "", "level": ""}}],
   "domains": [],
   "profile_summary": "",
-    "hard_skills": {{
+  "hard_skills": {{
     "programming_languages": [],
     "backend": [],
     "frontend": [],
@@ -163,7 +143,7 @@ SCHEMA:
   "skills_overview": [
     {{
       "category": "",
-      "tool": "",
+      "tools": [],
       "years_of_experience": ""
     }}
   ],
@@ -174,36 +154,32 @@ TEXT:
 {text}
 """
 
-    # ============================================================
-    # 🔄 Если mode=details и есть готовая структура — добавляем
-    # ============================================================
     if mode == "details" and base_structure:
         prompt += f"\n\nBASE STRUCTURE:\n{json.dumps(base_structure, ensure_ascii=False, indent=2)}"
 
-    # ============================================================
-    # ⚙️ Вызов GPT
-    # ============================================================
-    response = client.chat.completions.create(
-        model="gpt-5-mini",
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": "You must extract structured data and return only JSON. Follow the schema exactly."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    content = response.choices[0].message.content.strip()
     try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        return {"raw_response": content}
+        response = client.chat.completions.create(
+            model="gpt-5-mini",  
+            messages=[
+                {"role": "system", "content": "You are an expert CV parser."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        raw = response.choices[0].message.content
+        return {
+            "raw_response": raw,
+            "mode": mode,
+            "prompt": prompt
+        }
 
+    except Exception as e:
+        print(f"❌ GPT error: {e}")
+        return {"raw_response": "", "error": str(e)}
 
 # ============================================================
-# 🧩 Исправление открытых диапазонов дат
+# 📆 Исправление открытых диапазонов дат
 # ============================================================
 def fix_open_date_ranges(text_or_json):
-    """Fixes incomplete date ranges like '07.20 –' → 'Jul 2020 – Present'."""
     if isinstance(text_or_json, dict):
         for key, value in text_or_json.items():
             if isinstance(value, dict):
@@ -219,53 +195,71 @@ def fix_open_date_ranges(text_or_json):
         return text_or_json
 
     text = str(text_or_json)
-    text = re.sub(r"\b0?1\.?(\d{2})\b", r"Jan 20\1", text)
-    text = re.sub(r"\b0?2\.?(\d{2})\b", r"Feb 20\1", text)
-    text = re.sub(r"\b0?3\.?(\d{2})\b", r"Mar 20\1", text)
-    text = re.sub(r"\b0?4\.?(\d{2})\b", r"Apr 20\1", text)
-    text = re.sub(r"\b0?5\.?(\d{2})\b", r"May 20\1", text)
-    text = re.sub(r"\b0?6\.?(\d{2})\b", r"Jun 20\1", text)
-    text = re.sub(r"\b0?7\.?(\d{2})\b", r"Jul 20\1", text)
-    text = re.sub(r"\b0?8\.?(\d{2})\b", r"Aug 20\1", text)
-    text = re.sub(r"\b0?9\.?(\d{2})\b", r"Sep 20\1", text)
-    text = re.sub(r"\b10\.?(\d{2})\b", r"Oct 20\1", text)
-    text = re.sub(r"\b11\.?(\d{2})\b", r"Nov 20\1", text)
-    text = re.sub(r"\b12\.?(\d{2})\b", r"Dec 20\1", text)
-    text = re.sub(r"([A-Za-z]{3} 20\d{2})\s*[–-]\s*$", r"\1 – Present", text)
+    month_map = {
+        "01": "Jan", "1": "Jan", "02": "Feb", "2": "Feb", "03": "Mar", "3": "Mar",
+        "04": "Apr", "4": "Apr", "05": "May", "5": "May", "06": "Jun", "6": "Jun",
+        "07": "Jul", "7": "Jul", "08": "Aug", "8": "Aug", "09": "Sep", "9": "Sep",
+        "10": "Oct", "11": "Nov", "12": "Dec"
+    }
+
+    for num, name in month_map.items():
+        text = re.sub(rf"\b{num}\.?\s?(\d{{2}})\b", rf"{name} 20\1", text)
+
+    text = re.sub(r"([A-Za-z]{{3}} 20\d{{2}})\s*[–-]\s*$", r"\1 – Present", text)
     return text
 
 # ============================================================
-# 2️⃣ Новые функции для совместимости с main.py (не ломают старый код)
+# 🔄 Обёртки для вызовов
 # ============================================================
-
 def extract_structure_with_gpt(text: str) -> dict:
-    """Извлекает базовую структуру (скелет) CV."""
     return ask_chatgpt(text, mode="structure")
 
-
 def extract_details_with_gpt(text: str, structure: dict) -> dict:
-    """
-    Заполняет детальную информацию в структуру CV.
-    Всегда требует заполнения полей duration с точными диапазонами дат.
-    """
-    merged_prompt = {
-        "instruction": (
-            "Extract ALL project details from the CV, including exact durations "
-            "(start and end dates, or 'Present'). If dates are not explicitly written, "
-            "infer them logically from the context or timeline order."
-        ),
-        "structure": structure,
-        "text": text
-    }
-    return ask_chatgpt(merged_prompt, mode="details")
-
-
+    return ask_chatgpt(text, mode="details", base_structure=structure)
 
 def auto_fix_missing_fields(data: dict) -> dict:
-    """Автоматически заполняет пустые поля в JSON."""
     return ask_chatgpt(data, mode="fix")
 
+# ============================================================
+# 🧪 Локальный запуск
+# ============================================================
 if __name__ == "__main__":
-    # Тестовый запуск
-    text = "Lead BI Developer, Azure Databricks, 07.21 – Jetzt"
-    print(json.dumps(ask_chatgpt(text, mode="structure"), indent=2, ensure_ascii=False))
+    logging.basicConfig(level=logging.INFO)
+
+    input_path = "debug/full_prepared_text.txt"
+    output_path = "debug/filled_cv_from_gpt.json"
+
+    if not os.path.exists(input_path):
+        logging.warning(f"⚠️ File not found: {input_path}")
+        exit(1)
+
+    with open(input_path, "r", encoding="utf-8") as f:
+        input_text = f.read()
+
+    logging.info("📨 Sending text to GPT (mode='details')...")
+    result = ask_chatgpt(input_text, mode="details")
+
+    if "raw_response" in result:
+        try:
+            filled_json = json.loads(result["raw_response"])
+
+            # ⬇️ Постпроцессинг
+            from postprocess import postprocess_filled_cv
+            with open("debug/full_prepared_text.txt", "r", encoding="utf-8") as f:
+                raw_text = f.read()
+            filled_json = postprocess_filled_cv(filled_json, raw_text)
+
+            # ⬇️ Сохранение
+            with open(output_path, "w", encoding="utf-8") as out_f:
+                json.dump(filled_json, out_f, indent=2, ensure_ascii=False)
+
+            logging.info(f"✅ Результат сохранён: {output_path}")
+
+
+        except json.JSONDecodeError as e:
+            logging.error("❌ JSON parsing error:")
+            logging.error(e)
+            logging.warning("⚠️ GPT response:")
+            print(result["raw_response"])
+    else:
+        logging.error("❌ GPT did not return a valid response.")

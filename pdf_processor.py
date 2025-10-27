@@ -29,17 +29,42 @@ def extract_text_by_page(pdf_path: str) -> list[str]:
 # 2️⃣ Тегирование дат
 # ============================================================
 def tag_dates(text: str) -> str:
-    """Находит диапазоны дат и оборачивает их в [DATE]...[/DATE]."""
-    date_patterns = [
-        r"\b\d{1,2}\.\d{2}\b\s*[-–]\s*\d{1,2}\.\d{2}\b",          # 07.21 – 12.23
-        r"\b\d{1,2}\.\d{2}\b\s*[-–]\s*(?:Jetzt|Aktuell|Heute|Present|Now)\b",
-        r"\b\d{2}/\d{4}\s*[-–]\s*\d{2}/\d{4}\b",                 # 09/2022 – 04/2024
-        r"\b(20\d{2}|19\d{2})\s*[-–]\s*(?:20\d{2}|Present|Now|Heute|Jetzt|Aktuell)\b",
-        r"\b\d{2}\.\d{2}\s*[-–]\s*(?:\d{2}\.\d{2}|Jetzt|Aktuell|Heute|Present|Now)\b",
+    """
+    Находит диапазоны и одиночные даты (включая немецкие форматы)
+    и оборачивает их в [DATE]...[/DATE].
+    """
+    # Основные паттерны диапазонов (07.21 – 12.23, 01.23 – Jetzt)
+    patterns = [
+        r"\b(0?[1-9]|1[0-2])\.(\d{2})\s*[-–]\s*(0?[1-9]|1[0-2])\.(\d{2})\b",
+        r"\b(0?[1-9]|1[0-2])\.(\d{2})\s*[-–]\s*(Jetzt|Derzeit|Heute|Present|Now|Aktuell)\b",
+        r"\b(0?[1-9]|1[0-2])\.\d{2}\b\s*[-–]\s*$",  # открытый конец диапазона
+        r"\b(0?[1-9]|1[0-2])\/(\d{4})\s*[-–]\s*(0?[1-9]|1[0-2])\/(\d{4})\b",
+        r"\b(0?[1-9]|1[0-2])\/(\d{4})\s*[-–]\s*(Jetzt|Derzeit|Heute|Present|Now|Aktuell)\b",
+        # слова вида "seit 07.21" или "since 07/2021"
+        r"(?i)\b(seit|since)\s+(0?[1-9]|1[0-2])[./](\d{2,4})\b",
+        # диапазоны с годами
+        r"\b(20\d{2}|19\d{2})\s*[-–]\s*(20\d{2}|Present|Now|Heute|Jetzt|Aktuell)\b",
+        # англоязычные месяцы
         r"(?:(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)\s+\d{4}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?[a-z]*\s*\d{4}",
     ]
-    for pattern in date_patterns:
+
+    for pattern in patterns:
         text = re.sub(pattern, lambda m: f"[DATE]{m.group(0)}[/DATE]", text, flags=re.IGNORECASE)
+
+    # Преобразуем отдельные “Jetzt”, “Derzeit” и т.п. в Present
+    text = re.sub(r"\b(Jetzt|Derzeit|Aktuell|Heute)\b", "Present", text, flags=re.IGNORECASE)
+
+    return text
+
+
+def merge_floating_dates(text: str) -> str:
+    """
+    Объединяет даты, разделённые переносом строки, например:
+    07.21
+    12.23  → 07.21 – 12.23
+    """
+    text = re.sub(r'(?<!\d)(\d{2}\.\d{2})\s*\n\s*(\d{2}\.\d{2})(?!\d)', r'\1 – \2', text)
+    text = re.sub(r'(?<!\d)(\d{2}/\d{4})\s*\n\s*(\d{2}/\d{4})(?!\d)', r'\1 – \2', text)
     return text
 
 
@@ -170,9 +195,9 @@ def prepare_cv_text(pdf_path: str, cache_dir="data_output") -> str:
     # --- Перевод при необходимости
     if detected_lang != "en":
         translation_prompt = f"""
-Translate this CV text to English without summarizing.
-Preserve ALL structure, especially date ranges (e.g., "07/2021 – 03/2023").
-Keep section titles (Education, Languages, Experience) as-is.
+Translate this CV text from German to English word-by-word, preserving the exact line structure.
+Do NOT split or merge projects. Do NOT add numbering or new sections.
+Preserve ALL original formatting and project boundaries.
 TEXT:
 {raw_text[:15000]}
 """
@@ -181,6 +206,11 @@ TEXT:
             raw_text = result["raw_response"]
         elif isinstance(result, str):
             raw_text = result
+
+        raw_text = re.sub(r"(?i)\b(sprachen|sprachkenntnisse)\b", "Languages", raw_text)
+        raw_text = re.sub(r"(?i)\b(ausbildung|bildung)\b", "Education", raw_text)
+        raw_text = re.sub(r"(?i)\b(berufserfahrung|erfahrung|projects?|projekte)\b", "Experience", raw_text)
+        raw_text = re.sub(r"(?i)\b(kenntnisse|skills|kompetenzen|technologien|tools)\b", "Skills", raw_text)
 
     # --- Тегируем диапазоны дат ДО очистки
     tagged_text = tag_dates(raw_text)
@@ -209,3 +239,21 @@ TEXT:
 
     return normalized_text, raw_text
 
+
+# ============================================================
+# 🧪 Debug
+# ============================================================
+if __name__ == "__main__":
+    path = "data_input/CV Manuel Wolfsgruber.pdf"  # или .pdf
+    os.makedirs("debug", exist_ok=True)
+
+    prepared, raw = prepare_cv_text(path)
+
+    with open("debug/full_prepared_text.txt", "w", encoding="utf-8") as f:
+        f.write(prepared)
+    with open("debug/raw_extracted_text.txt", "w", encoding="utf-8") as f:
+        f.write(raw)
+
+    print("\n✅ Всё готово!")
+    print("📄 full_prepared_text.txt — подготовленный текст")
+    print("🗒 raw_extracted_text.txt — оригинальный текст из CV")

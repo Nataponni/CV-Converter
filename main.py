@@ -1,18 +1,17 @@
 import os
 import re
+import json
 import time
+import logging
 
 from pdf_processor import prepare_cv_text
-from chatgpt_client import (
-    extract_structure_with_gpt,
-    extract_details_with_gpt,
-    auto_fix_missing_fields,
+from chatgpt_client import ask_chatgpt
+from postprocess import (
+    postprocess_filled_cv,
+    clean_text_fields,
+    validate_cv_schema,
 )
-from skill_mapper import remap_hard_skills
-from postprocess import unify_languages, unify_durations, clean_duplicates_in_skills, fix_project_dates_from_text
-from utils import save_json, has_empty_fields
-from schema import validate_schema
-
+from utils import save_json
 
 # Пути к файлам
 INPUT_PDF = "data_input/CV Manuel Wolfsgruber.pdf"
@@ -23,9 +22,7 @@ OUTPUT_JSON = "data_output/result_Manuel.json"
 # 🔹 Вспомогательные функции
 # ============================================================
 def filter_explicit_domains(text: str, domains: list[str]) -> list[str]:
-    """
-    Расширяет поиск доменов по ключевым словам и контексту.
-    """
+    """Расширяет поиск доменов по ключевым словам и контексту."""
     domain_keywords = {
         "Machine Learning": ["machine learning", "ml", "deep learning", "neural network"],
         "AI": ["artificial intelligence", "ai model", "generative ai"],
@@ -45,7 +42,6 @@ def filter_explicit_domains(text: str, domains: list[str]) -> list[str]:
         if any(k in text_l for k in keywords):
             found.add(domain)
 
-    # Сохраняем только домены, которые GPT тоже вернул (если есть)
     if domains:
         found.update(domains)
 
@@ -53,9 +49,7 @@ def filter_explicit_domains(text: str, domains: list[str]) -> list[str]:
 
 
 def shorten_profile_summary(text: str, max_chars: int = 1200) -> str:
-    """
-    Обрезает длинное описание профиля, если GPT выдал слишком длинный текст.
-    """
+    """Обрезает слишком длинное описание профиля."""
     if not text:
         return ""
     text = re.sub(r'\s+', ' ', text.strip())
@@ -73,52 +67,63 @@ def shorten_profile_summary(text: str, max_chars: int = 1200) -> str:
 
 def main():
     start_time = time.time()
-    print("🚀 Starting CV Extraction & Structuring Pipeline v2.0")
+    logging.basicConfig(level=logging.INFO)
+    logging.info("🚀 Starting CV Extraction Pipeline...")
 
-    # 1️⃣ Подготовка текста из PDF
-    prepared_text, raw_pdf_text = prepare_cv_text(INPUT_PDF)
+    # 1️⃣ Обработка PDF → подготовка текста
+    prepared_text, raw_text = prepare_cv_text(INPUT_PDF)
 
+    # 2️⃣ Вызов GPT
+    logging.info("📨 Sending text to GPT (mode='details')...")
+    result = ask_chatgpt(prepared_text, mode="details")
 
-    # 2️⃣ GPT Шаг 1 — Извлечение структуры
-    print("\n🧩 Step 1: Extracting CV structure...")
-    structure = extract_structure_with_gpt(prepared_text)
+    # 3️⃣ Проверка и разбор ответа
+    if "raw_response" in result:
+        try:
+            filled_json = json.loads(result["raw_response"])
 
-    # 3️⃣ GPT Шаг 2 — Детализация и заполнение данных
-    print("\n🔍 Step 2: Extracting detailed content...")
-    result = extract_details_with_gpt(prepared_text, structure)
+            # 4️⃣ Основная постобработка
+            logging.info("🧩 Running structured postprocessing...")
+            filled_json = postprocess_filled_cv(filled_json, raw_text)
 
-    # 4️⃣ Автозаполнение пропусков
-    print("\n🤖 Step 3: Auto-filling missing fields...")
-    if has_empty_fields(result):
-        result = auto_fix_missing_fields(result)
+            # 5️⃣ Дополнительная очистка и проверка
+            logging.info("🧼 Cleaning and validating result...")
+            filled_json = clean_text_fields(filled_json)
 
-    # 5️⃣ Проверка и валидация JSON
-    print("\n📏 Step 4: Schema validation...")
-    result = validate_schema(result)
+            missing_fields = validate_cv_schema(filled_json)
+            if missing_fields:
+                logging.warning(f"⚠️ Missing fields: {missing_fields}")
 
-    # 6️⃣ Постобработка данных
-    print("\n🧼 Step 5: Normalizing and cleaning data...")
-    result["hard_skills"] = remap_hard_skills(result.get("hard_skills", {}))
-    result["hard_skills"] = clean_duplicates_in_skills(result["hard_skills"])
-    result["languages"] = unify_languages(result.get("languages", []), original_text=raw_pdf_text)
-    result["projects_experience"] = fix_project_dates_from_text(
-        result.get("projects_experience", []),
-        raw_pdf_text
-    )
-    result["projects_experience"] = unify_durations(result["projects_experience"])
+            # 6️⃣ Доменная фильтрация и сокращение summary
+            filled_json["domains"] = filter_explicit_domains(
+                prepared_text, filled_json.get("domains", [])
+            )
+            filled_json["profile_summary"] = shorten_profile_summary(
+                filled_json.get("profile_summary", "")
+            )
 
-    # 7️⃣ Применение фильтров и сокращение профиля
-    explicit_domains = filter_explicit_domains(prepared_text, result.get("domains", []))
-    if explicit_domains:
-        result["domains"] = explicit_domains
-    result["profile_summary"] = shorten_profile_summary(result.get("profile_summary", ""))
+            # 7️⃣ Добавление метаданных
+            filled_json["_meta"] = {
+                "source_pdf": INPUT_PDF,
+                "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "processing_time_sec": round(time.time() - start_time, 2),
+            }
 
-    # 8️⃣ Сохранение JSON результата
-    save_json(OUTPUT_JSON, result)
+            # 8️⃣ Сохранение результата
+            save_json(OUTPUT_JSON, filled_json)
+            logging.info(f"✅ Result saved to: {OUTPUT_JSON}")
+
+        except json.JSONDecodeError as e:
+            logging.error("❌ JSON parsing error:")
+            logging.error(e)
+            logging.warning("⚠️ GPT raw response:")
+            print(result["raw_response"])
+
+    else:
+        logging.error("❌ GPT did not return a valid response.")
 
     elapsed = time.time() - start_time
-    print(f"\n✅ Process completed successfully in {elapsed:.2f}s")
-    print(f"💾 Result saved to: {OUTPUT_JSON}")
+    logging.info(f"✅ Pipeline completed in {elapsed:.2f} seconds")
 
 
 # ============================================================
