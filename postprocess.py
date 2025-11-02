@@ -2,7 +2,7 @@ import re
 import json
 from collections import defaultdict
 from datetime import datetime
-from utils import normalize_year
+from pdf_processor import normalize_year
 
 # ===============================================
 # 🔤 Языки
@@ -113,6 +113,40 @@ def unify_durations(projects):
             project["duration"] = f"{y1} – {y2}"
 
     return projects
+
+# ============================================================
+# 📆 Исправление открытых диапазонов дат
+# ============================================================
+def fix_open_date_ranges(text_or_json):
+    if isinstance(text_or_json, dict):
+        for key, value in text_or_json.items():
+            if isinstance(value, dict):
+                fix_open_date_ranges(value)
+            elif isinstance(value, list):
+                for i, item in enumerate(value):
+                    if isinstance(item, dict):
+                        fix_open_date_ranges(item)
+                    elif isinstance(item, str):
+                        text_or_json[key][i] = fix_open_date_ranges(item)
+            elif key.lower() in ["duration", "years_of_experience"] and isinstance(value, str):
+                text_or_json[key] = fix_open_date_ranges(value)
+        return text_or_json
+
+    text = str(text_or_json)
+    month_map = {
+        "01": "Jan", "1": "Jan", "02": "Feb", "2": "Feb", "03": "Mar", "3": "Mar",
+        "04": "Apr", "4": "Apr", "05": "May", "5": "May", "06": "Jun", "6": "Jun",
+        "07": "Jul", "7": "Jul", "08": "Aug", "8": "Aug", "09": "Sep", "9": "Sep",
+        "10": "Oct", "11": "Nov", "12": "Dec"
+    }
+
+    for num, name in month_map.items():
+        text = re.sub(rf"\b{num}\.?\s?(\d{{2}})\b", rf"{name} 20\1", text)
+
+    text = re.sub(r"([A-Za-z]{{3}} 20\d{{2}})\s*[–-]\s*$", r"\1 – Present", text)
+    text = re.sub(r"\b(0?[1-9]|1[0-2])[./](20\d{2})\b", lambda m: f"{month_map[m.group(1).zfill(2)]} {m.group(2)}", text)
+
+    return text
 
 # ===============================================
 # 🧹 Очистка hard_skills
@@ -249,4 +283,3 @@ def validate_cv_schema(cv_json):
     ]
     missing = [f for f in required_fields if f not in cv_json or not cv_json[f]]
     return missing
-

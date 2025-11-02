@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 # ============================================================
 # 🧠 Основная функция вызова GPT
 # ============================================================
-def ask_chatgpt(text, mode="details", base_structure=None):
+def ask_chatgpt(text, mode="details", base_structure=None, model="gpt-5-mini"):
     """
     Универсальная функция вызова GPT для CV-парсинга.
     Поддерживает режимы:
@@ -30,13 +30,6 @@ def ask_chatgpt(text, mode="details", base_structure=None):
     else:
         task_description = "Extract structured CV data from text and return strictly formatted JSON only."
 
-    allowed_categories = [
-        "cloud_platforms", "devops_iac", "monitoring_security", "programming_languages",
-        "containers_orchestration", "ci_cd_tools", "ai_ml_tools", "databases",
-        "backend", "frontend", "security", "data_engineering", "etl_tools",
-        "bi_tools", "analytics", "infrastructure_os", "other_tools"
-    ]
-
     prompt = f"""
 TASK: {task_description}
 
@@ -45,14 +38,25 @@ INSTRUCTIONS:
 - Extract a complete, structured JSON strictly following the provided SCHEMA.
 - Detect the candidate’s actual domain (e.g., Cloud, DevOps, BI, Data Engineering) based on tools, project content, and terminology.
 - Avoid assumptions — rely only on what's clearly stated or strongly implied in the resume.
+- Always extract and include exact start and end dates for every project, job, or education entry.
 
 === PROJECTS ===
-- In "projects_experience":
-  * Always include the full "duration" as written (e.g., "Jul 2021 – Present").
-  * Use concise, technical bullet points (≤12 words) in "responsibilities", starting with action verbs.
-  * Extract all real, clearly separate projects or job positions.
-  * Do not artificially split one job or role into multiple entries.
-  * If multiple responsibilities belong to the same employer and time period, keep them as one project.
+
+In the "projects_experience" field:
+
+• Always extract any block that begins with `Project:` and contains both `title:` and `duration:`.  
+  → These blocks are always valid. Extract them even if role, overview, or tech_stack are missing. Fill missing fields with empty values.
+• Preserve the full "duration" exactly as written (e.g., "Jul 2021 – Present"). Do not modify, translate, or guess.
+• Extract only real, distinct projects. Use visual or semantic separation as an indicator (headings, date blocks, project keywords, client names, etc.).
+• Use concise, technical bullet points (≤18 words) for "responsibilities", starting with action verbs (e.g., Designed, Built, Automated, Integrated).
+• Do not split a single job into multiple projects unless:
+  - It has distinct durations, OR
+  - There is clear formatting separation.
+
+• If multiple roles or tasks are grouped under the same company and duration, treat them as one project.
+• Do not skip projects just because some fields are missing. If it's a valid block (with `Project:` + `title:` + `duration:`), extract it fully with empty fields where needed.
+• All extracted projects must follow the schema strictly.
+
 
   === SKILLS ===
 - For "hard_skills" and "skills_overview":
@@ -102,6 +106,17 @@ INSTRUCTIONS:
 - Return a single valid JSON object strictly matching the SCHEMA.
 - Do NOT return markdown, explanations, comments, or prose — only JSON.
 - Do NOT hallucinate tools, projects, dates, or titles.
+- Do NOT change field names or structure.
+- Dates must be extracted even if embedded in non-standard formats, such as:
+  * PowerPoint-style bullets or slide-like phrasing
+  * Freeform text, e.g., "During my MSc in 2021 I..."
+  * Visual or manual formats, e.g., "07/21", "since 2020", "2020 – today"
+- Always scan project descriptions, role titles, and surrounding context for implicit time references.
+- If a date is mentioned indirectly (e.g., "as part of my 2022 thesis"), infer the full range logically (e.g., "Jan 2022 – Dec 2022").
+  - Accept formats like:
+  * "07/21", "07.21", "07-21"
+  * "seit 2020", "from 2020", "during 2020"
+  * "2020 – heute", "2020 – now", "2020 – aktuell"
 
 SCHEMA:
 {{
@@ -154,62 +169,33 @@ TEXT:
 {text}
 """
 
-    if mode == "details" and base_structure:
-        prompt += f"\n\nBASE STRUCTURE:\n{json.dumps(base_structure, ensure_ascii=False, indent=2)}"
+    # --- собираем сообщения
+    messages = [
+        {"role": "system", "content": "You are an expert CV parser."},
+        {"role": "user", "content": prompt},
+    ]
 
+    if mode == "details" and base_structure:
+        messages.append({
+            "role": "user",
+            "content": f"Use this structure strictly as your schema:\n{json.dumps(base_structure, ensure_ascii=False, indent=2)}"
+        })
+
+    # --- запрос к API
     try:
         response = client.chat.completions.create(
-            model="gpt-5-mini",  
-            messages=[
-                {"role": "system", "content": "You are an expert CV parser."},
-                {"role": "user", "content": prompt},
-            ],
+            model=model,
+            messages=messages,
         )
         raw = response.choices[0].message.content
-        return {
-            "raw_response": raw,
-            "mode": mode,
-            "prompt": prompt
-        }
+        return {"raw_response": raw, "mode": mode, "prompt": prompt}
 
     except Exception as e:
-        print(f"❌ GPT error: {e}")
+        logging.error(f"❌ GPT error: {e}")
         return {"raw_response": "", "error": str(e)}
 
 # ============================================================
-# 📆 Исправление открытых диапазонов дат
-# ============================================================
-def fix_open_date_ranges(text_or_json):
-    if isinstance(text_or_json, dict):
-        for key, value in text_or_json.items():
-            if isinstance(value, dict):
-                fix_open_date_ranges(value)
-            elif isinstance(value, list):
-                for i, item in enumerate(value):
-                    if isinstance(item, dict):
-                        fix_open_date_ranges(item)
-                    elif isinstance(item, str):
-                        text_or_json[key][i] = fix_open_date_ranges(item)
-            elif key.lower() == "duration" and isinstance(value, str):
-                text_or_json[key] = fix_open_date_ranges(value)
-        return text_or_json
-
-    text = str(text_or_json)
-    month_map = {
-        "01": "Jan", "1": "Jan", "02": "Feb", "2": "Feb", "03": "Mar", "3": "Mar",
-        "04": "Apr", "4": "Apr", "05": "May", "5": "May", "06": "Jun", "6": "Jun",
-        "07": "Jul", "7": "Jul", "08": "Aug", "8": "Aug", "09": "Sep", "9": "Sep",
-        "10": "Oct", "11": "Nov", "12": "Dec"
-    }
-
-    for num, name in month_map.items():
-        text = re.sub(rf"\b{num}\.?\s?(\d{{2}})\b", rf"{name} 20\1", text)
-
-    text = re.sub(r"([A-Za-z]{{3}} 20\d{{2}})\s*[–-]\s*$", r"\1 – Present", text)
-    return text
-
-# ============================================================
-# 🔄 Обёртки для вызовов
+# 🔄 Обёртки
 # ============================================================
 def extract_structure_with_gpt(text: str) -> dict:
     return ask_chatgpt(text, mode="structure")
@@ -218,14 +204,52 @@ def extract_details_with_gpt(text: str, structure: dict) -> dict:
     return ask_chatgpt(text, mode="details", base_structure=structure)
 
 def auto_fix_missing_fields(data: dict) -> dict:
-    return ask_chatgpt(data, mode="fix")
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    return ask_chatgpt(text, mode="fix")
+
+def run_robust_cv_parsing(text: str, model="gpt-5-mini") -> dict:
+    """
+    Стабильный GPT-вызов с fallback логикой:
+    1. Попробовать structure → details
+    2. Если details упал → fix
+    3. Если всё упало → моно-вызов (один этап)
+    """
+    try:
+        logging.info("🔎 Step 1: Extract structure")
+        structure_raw = ask_chatgpt(text, mode="structure")
+        base_structure = json.loads(structure_raw.get("raw_response", "{}"))
+
+        logging.info("🧠 Step 2: Extract details")
+        detailed_result = ask_chatgpt(text, mode="details", base_structure=base_structure)
+
+        try:
+            parsed = json.loads(detailed_result.get("raw_response", "{}"))
+            return {"success": True, "json": parsed, "raw_response": detailed_result["raw_response"], "mode": "details"}
+        except json.JSONDecodeError:
+            logging.warning("⚠️ Step 2 failed, trying fix...")
+            fixed_result = ask_chatgpt(detailed_result.get("raw_response", "{}"), mode="fix")
+            try:
+                parsed_fixed = json.loads(fixed_result.get("raw_response", "{}"))
+                return {"success": True, "json": parsed_fixed, "raw_response": fixed_result["raw_response"], "mode": "fix"}
+            except json.JSONDecodeError:
+                logging.warning("⚠️ Fix also failed, trying mono mode...")
+    except Exception as e:
+        logging.error(f"❌ Structured pipeline failed: {e}")
+
+    # Mono fallback
+    logging.info("🚨 Mono mode fallback")
+    from chatgpt_client import ask_chatgpt as mono_mode
+    result = mono_mode(text)
+    if result.get("success"):
+        return result
+    return {"success": False, "json": {}, "raw_response": "", "mode": "fail"}
+
 
 # ============================================================
 # 🧪 Локальный запуск
 # ============================================================
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-
     input_path = "debug/full_prepared_text.txt"
     output_path = "debug/filled_cv_from_gpt.json"
 
@@ -237,24 +261,29 @@ if __name__ == "__main__":
         input_text = f.read()
 
     logging.info("📨 Sending text to GPT (mode='details')...")
-    result = ask_chatgpt(input_text, mode="details")
+    structure_raw = ask_chatgpt(input_text, mode="structure")
+
+    try:
+        base_structure = json.loads(structure_raw["raw_response"])
+    except Exception:
+        base_structure = None
+
+    result = ask_chatgpt(input_text, mode="details", base_structure=base_structure)
 
     if "raw_response" in result:
         try:
             filled_json = json.loads(result["raw_response"])
 
-            # ⬇️ Постпроцессинг
             from postprocess import postprocess_filled_cv
             with open("debug/full_prepared_text.txt", "r", encoding="utf-8") as f:
                 raw_text = f.read()
+
             filled_json = postprocess_filled_cv(filled_json, raw_text)
 
-            # ⬇️ Сохранение
             with open(output_path, "w", encoding="utf-8") as out_f:
                 json.dump(filled_json, out_f, indent=2, ensure_ascii=False)
 
             logging.info(f"✅ Результат сохранён: {output_path}")
-
 
         except json.JSONDecodeError as e:
             logging.error("❌ JSON parsing error:")

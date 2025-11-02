@@ -555,6 +555,18 @@ def make_skills_overview_box(data, styles):
     skills_overview = data.get("skills_overview", [])
     if not skills_overview:
         return None
+    
+    # ✅ Фильтрация по опыту — показываем только навыки с YoE > 0
+    filtered = []
+    for item in skills_overview:
+        yoe_raw = str(item.get("years_of_experience", "")).strip()
+        nums = re.findall(r"\d+(?:\.\d+)?", yoe_raw)
+        yoe_num = float(nums[-1]) if nums else 0.0
+        if yoe_num > 0:
+            filtered.append(item)
+    skills_overview = filtered
+    if not skills_overview:
+        return None
 
     title = Paragraph(
         '<font color="#2196F3"><b>SKILLS OVERVIEW</b></font>',
@@ -727,7 +739,7 @@ def generate_report_pdf_bytes(filled_json):
 
 # --- Запуск ---
 if __name__ == "__main__":
-    with open("data_output/result_Manuel.json", "r", encoding="utf-8") as f:
+    with open("debug/filled_cv_from_gpt.json", "r", encoding="utf-8") as f:
         data = json.load(f)
     pdf_path = create_pretty_first_section(data)
     print(f"✅ PDF создан: {pdf_path}")

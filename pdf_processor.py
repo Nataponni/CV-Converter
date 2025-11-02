@@ -4,6 +4,7 @@ import os
 from langdetect import detect, DetectorFactory
 from chatgpt_client import ask_chatgpt
 
+
 DetectorFactory.seed = 0  # для стабильности определения языка
 
 
@@ -55,6 +56,16 @@ def tag_dates(text: str) -> str:
     text = re.sub(r"\b(Jetzt|Derzeit|Aktuell|Heute)\b", "Present", text, flags=re.IGNORECASE)
 
     return text
+def normalize_year(text):
+    """
+    Приводит текстовый формат года к числовому виду.
+    Например: "2021", "21", "07/21" → "2021"
+    """
+    import re
+    match = re.search(r"(20\d{2}|19\d{2})", text)
+    if match:
+        return match.group(1)
+    return ""
 
 
 def merge_floating_dates(text: str) -> str:
@@ -201,7 +212,7 @@ Preserve ALL original formatting and project boundaries.
 TEXT:
 {raw_text[:15000]}
 """
-        result = ask_chatgpt(translation_prompt, mode="details")
+        result = ask_chatgpt(translation_prompt)
         if isinstance(result, dict) and "raw_response" in result:
             raw_text = result["raw_response"]
         elif isinstance(result, str):

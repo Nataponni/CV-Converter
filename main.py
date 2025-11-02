@@ -1,134 +1,104 @@
 import os
-import re
 import json
 import time
 import logging
-
+from multiprocessing import Process, Queue
 from pdf_processor import prepare_cv_text
+from postprocess import postprocess_filled_cv
 from chatgpt_client import ask_chatgpt
-from postprocess import (
-    postprocess_filled_cv,
-    clean_text_fields,
-    validate_cv_schema,
-)
-from utils import save_json
 
-# Пути к файлам
+# === Пути ===
 INPUT_PDF = "data_input/CV Manuel Wolfsgruber.pdf"
-OUTPUT_JSON = "data_output/result_Manuel.json"
+RAW_GPT_JSON = "data_output/raw_gpt.json"
+OUTPUT_JSON = "data_output/result_Manuel_1.json"
+
+# --- вынесенная функция ---
+def gpt_worker(q, mode, text, base_structure):
+    """Выполняет изолированный вызов GPT в отдельном процессе."""
+    from chatgpt_client import ask_chatgpt
+    result = ask_chatgpt(text, mode=mode, base_structure=base_structure)
+    q.put(result)
 
 
-# ============================================================
-# 🔹 Вспомогательные функции
-# ============================================================
-def filter_explicit_domains(text: str, domains: list[str]) -> list[str]:
-    """Расширяет поиск доменов по ключевым словам и контексту."""
-    domain_keywords = {
-        "Machine Learning": ["machine learning", "ml", "deep learning", "neural network"],
-        "AI": ["artificial intelligence", "ai model", "generative ai"],
-        "Data Engineering": ["data pipeline", "data ingestion", "etl", "databricks", "snowflake"],
-        "MLOps": ["mlops", "model deployment", "ci/cd for models", "vertex ai", "sagemaker"],
-        "Cloud": ["aws", "azure", "gcp", "kubernetes", "terraform"],
-        "Analytics": ["bi", "power bi", "analytics", "dashboards", "reporting"],
-        "IoT": ["iot", "connected devices", "sensor data", "predictive maintenance"],
-        "Finance": ["banking", "fintech", "risk model", "insurance"],
-        "Healthcare": ["medical", "health", "pharma", "clinical"],
-        "Manufacturing": ["factory", "industrial", "process optimization", "production"],
-    }
+def ask_chatgpt_isolated(mode, text, base_structure=None):
+    q = Queue()
+    p = Process(target=gpt_worker, args=(q, mode, text, base_structure))
+    p.start()
+    p.join()
 
-    found = set()
-    text_l = text.lower()
-    for domain, keywords in domain_keywords.items():
-        if any(k in text_l for k in keywords):
-            found.add(domain)
+    if not q.empty():
+        return q.get()
+    else:
+        logging.warning("⚠️ No data returned from GPT subprocess.")
+        return {"raw_response": "", "error": "No data returned from subprocess"}
 
-    if domains:
-        found.update(domains)
-
-    return sorted(found)
-
-
-def shorten_profile_summary(text: str, max_chars: int = 1200) -> str:
-    """Обрезает слишком длинное описание профиля."""
-    if not text:
-        return ""
-    text = re.sub(r'\s+', ' ', text.strip())
-    if len(text) > max_chars:
-        cut = text[:max_chars]
-        if "." in cut:
-            cut = cut[:cut.rfind(".") + 1]
-        return cut.strip()
-    return text.strip()
-
-
-# ============================================================
-# 🔹 Главный пайплайн
-# ============================================================
-
+# === Основной пайплайн ===
 def main():
     start_time = time.time()
-    logging.basicConfig(level=logging.INFO)
-    logging.info("🚀 Starting CV Extraction Pipeline...")
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.info("🚀 Starting full CV pipeline (PDF → GPT → JSON)...")
 
-    # 1️⃣ Обработка PDF → подготовка текста
+    # 1️⃣ Подготовка текста
     prepared_text, raw_text = prepare_cv_text(INPUT_PDF)
+    logging.info("📄 Text successfully extracted and normalized.")
 
-    # 2️⃣ Вызов GPT
-    logging.info("📨 Sending text to GPT (mode='details')...")
-    result = ask_chatgpt(prepared_text, mode="details")
+# 2️⃣ STRUCTURE
+    logging.info("📨 Requesting structure from GPT...")
+    structure_raw = ask_chatgpt(prepared_text, mode="structure")
 
-    # 3️⃣ Проверка и разбор ответа
-    if "raw_response" in result:
-        try:
-            filled_json = json.loads(result["raw_response"])
+    if not structure_raw or "raw_response" not in structure_raw:
+        logging.error("❌ Failed to get structure from GPT.")
+        return
 
-            # 4️⃣ Основная постобработка
-            logging.info("🧩 Running structured postprocessing...")
-            filled_json = postprocess_filled_cv(filled_json, raw_text)
+    try:
+        base_structure = json.loads(structure_raw["raw_response"])
+    except Exception as e:
+        logging.error(f"⚠️ Structure parsing failed: {e}")
+        base_structure = None
 
-            # 5️⃣ Дополнительная очистка и проверка
-            logging.info("🧼 Cleaning and validating result...")
-            filled_json = clean_text_fields(filled_json)
+    # 3️⃣ DETAILS
+    logging.info("📨 Requesting detailed CV data from GPT...")
+    result = ask_chatgpt(prepared_text, mode="details", base_structure=base_structure)
 
-            missing_fields = validate_cv_schema(filled_json)
-            if missing_fields:
-                logging.warning(f"⚠️ Missing fields: {missing_fields}")
 
-            # 6️⃣ Доменная фильтрация и сокращение summary
-            filled_json["domains"] = filter_explicit_domains(
-                prepared_text, filled_json.get("domains", [])
-            )
-            filled_json["profile_summary"] = shorten_profile_summary(
-                filled_json.get("profile_summary", "")
-            )
-
-            # 7️⃣ Добавление метаданных
-            filled_json["_meta"] = {
-                "source_pdf": INPUT_PDF,
-                "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "processing_time_sec": round(time.time() - start_time, 2),
-            }
-
-            # 8️⃣ Сохранение результата
-            save_json(OUTPUT_JSON, filled_json)
-            logging.info(f"✅ Result saved to: {OUTPUT_JSON}")
-
-        except json.JSONDecodeError as e:
-            logging.error("❌ JSON parsing error:")
-            logging.error(e)
-            logging.warning("⚠️ GPT raw response:")
-            print(result["raw_response"])
-
-    else:
+    if not result or "raw_response" not in result:
         logging.error("❌ GPT did not return a valid response.")
+        return
 
-    elapsed = time.time() - start_time
-    logging.info(f"✅ Pipeline completed in {elapsed:.2f} seconds")
+    # 4️⃣ Сохраняем "сырой" JSON
+    try:
+        filled_json = json.loads(result["raw_response"])
+        os.makedirs(os.path.dirname(RAW_GPT_JSON), exist_ok=True)
+        with open(RAW_GPT_JSON, "w", encoding="utf-8") as f:
+            json.dump(filled_json, f, indent=2, ensure_ascii=False)
+        logging.info(f"💾 Raw GPT output saved to: {RAW_GPT_JSON}")
+    except json.JSONDecodeError as e:
+        logging.error("❌ Invalid JSON from GPT:")
+        logging.error(e)
+        return
 
+    # 5️⃣ Постобработка
+    logging.info("🧩 Running postprocessing...")
+    filled_json = postprocess_filled_cv(filled_json, raw_text)
 
-# ============================================================
-# 🔹 Точка входа
-# ============================================================
+    # 6️⃣ Метаданные
+    filled_json["_meta"] = {
+        "source_pdf": INPUT_PDF,
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "processing_time_sec": round(time.time() - start_time, 2),
+        "model": "gpt-5-mini",
+    }
+
+    # 7️⃣ Сохраняем финал
+    os.makedirs(os.path.dirname(OUTPUT_JSON), exist_ok=True)
+    with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
+        json.dump(filled_json, f, indent=2, ensure_ascii=False)
+
+    logging.info(f"✅ Final result saved to: {OUTPUT_JSON}")
+    logging.info(f"📊 Projects: {len(filled_json.get('projects_experience', []))}")
+    logging.info(f"🗣 Languages: {len(filled_json.get('languages', []))}")
+    logging.info(f"⏱ Duration: {round(time.time() - start_time, 2)} sec")
+
 
 if __name__ == "__main__":
     main()
