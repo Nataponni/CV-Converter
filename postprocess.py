@@ -201,9 +201,7 @@ def split_skills_overview_rows(skills):
                 "tool": tool,
                 "years_of_experience": years
             })
-
     return result
-   
    
 def generate_skills_overview(skills_overview_raw):
     if not isinstance(skills_overview_raw, list):
@@ -235,6 +233,23 @@ def generate_skills_overview(skills_overview_raw):
 
     return final_overview
 
+def filter_skills_overview(skills):
+    seen = set()
+    filtered = []
+    for item in skills:
+        category = item.get("category")
+        tools = item.get("tools", [])
+        years = item.get("years_of_experience", "").strip()
+
+        # Удаляем дубликаты и "0 лет"
+        if years in ["0", "0 years", ""]:
+            continue
+        key = (category, tuple(sorted(tools)))
+        if key not in seen:
+            seen.add(key)
+            filtered.append(item)
+    return filtered
+
 # ===============================================
 # 🧩 Основной вызов
 # ===============================================
@@ -244,10 +259,10 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
     data["projects_experience"] = unify_durations(data.get("projects_experience", []))
     data["hard_skills"] = clean_duplicates_in_skills(data.get("hard_skills", {}))
 
-    # 🧠 Только если skills_overview отсутствует или пуст — пересчитать
-    if not data.get("skills_overview"):
-        flat_skills = split_skills_overview_rows(data.get("skills_overview", []))
-        data["skills_overview"] = generate_skills_overview(flat_skills)
+    # 🧠 skills_overview: нормализовать, разделить, пересчитать, отфильтровать
+    flat_skills = split_skills_overview_rows(data.get("skills_overview", []))
+    reconstructed = generate_skills_overview(flat_skills)
+    data["skills_overview"] = filter_skills_overview(reconstructed)
 
     return data
 
