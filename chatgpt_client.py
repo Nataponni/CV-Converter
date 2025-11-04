@@ -1,19 +1,21 @@
 import os
 import re
 import json
+import ast
 import logging
 from dotenv import load_dotenv
 from openai import OpenAI
+from postprocess import safe_parse_if_str, postprocess_filled_cv
 
 # ============================================================
-# 🔧 Инициализация
+# 🔧 Initialisierung
 # ============================================================
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 logging.basicConfig(level=logging.INFO)
 
 # ============================================================
-# 🧠 Основная функция вызова GPT
+# 🧠 Hauptfunktion zum Aufruf von GPT
 # ============================================================
 def ask_chatgpt(text, mode="details", base_structure=None, model="gpt-5-mini"):
     """
@@ -44,7 +46,7 @@ INSTRUCTIONS:
 
 In the "projects_experience" field:
 
-• Always extract any block that begins with `Project:` and contains both `title:` and `duration:`.  
+• Extract any block that contains at least a `project_title:` — even if duration is missing.
   → These blocks are always valid. Extract them even if role, overview, or tech_stack are missing. Fill missing fields with empty values.
 • Preserve the full "duration" exactly as written (e.g., "Jul 2021 – Present"). Do not modify, translate, or guess.
 • Extract only real, distinct projects. Use visual or semantic separation as an indicator (headings, date blocks, project keywords, client names, etc.).
@@ -56,6 +58,15 @@ In the "projects_experience" field:
 • If multiple roles or tasks are grouped under the same company and duration, treat them as one project.
 • Do not skip projects just because some fields are missing. If it's a valid block (with `Project:` + `title:` + `duration:`), extract it fully with empty fields where needed.
 • All extracted projects must follow the schema strictly.
+
+- NEVER wrap JSON arrays or objects in strings.
+  * For example, do NOT return: "projects_experience": "[{...}]"
+  * Instead, return a proper JSON list: "projects_experience": [{...}]
+- Do NOT return lists as strings. Fields like "projects_experience", "skills_overview", and "languages" must be actual JSON arrays — not strings that look like lists.
+- Always use double quotes for all keys and string values.
+• Each distinct project must become a separate JSON object in the "projects_experience" list.
+• Never merge or combine projects — even if company or technologies overlap.
+• Use clear separators such as '=== PROJECT START ===' or 'Project:' to distinguish them.
 
 
   === SKILLS ===
@@ -76,7 +87,9 @@ In the "projects_experience" field:
   * Estimate approximate "years_of_experience" logically (e.g., from project durations or global statements like "5+ years with Azure").
   * Output must include ≥10 distinct categories.
   * Each row must follow this format: {{ "category": "", "tools": [], "years_of_experience": "" }}
-  * Always extract actual tools listed under each category in the CV, even if they appear in the same line as the category or year.
+  • Extract any block that contains at least a `project_title:` — even if duration is missing.
+  → If duration missing, return it as an empty string "".
+
   * Do not leave "tools" empty — extract at least one tool per category if mentioned anywhere in the CV.
 
 === PROFILE SUMMARY ===
@@ -169,7 +182,7 @@ TEXT:
 {text}
 """
 
-    # --- собираем сообщения
+# --- Erstellen der Nachrichten
     messages = [
         {"role": "system", "content": "You are an expert CV parser."},
         {"role": "user", "content": prompt},
@@ -181,7 +194,7 @@ TEXT:
             "content": f"Use this structure strictly as your schema:\n{json.dumps(base_structure, ensure_ascii=False, indent=2)}"
         })
 
-    # --- запрос к API
+# --- API-Aufruf
     try:
         response = client.chat.completions.create(
             model=model,
@@ -195,7 +208,7 @@ TEXT:
         return {"raw_response": "", "error": str(e)}
 
 # ============================================================
-# 🔄 Обёртки
+# 🔄 Wrapper-Funktionen
 # ============================================================
 def extract_structure_with_gpt(text: str) -> dict:
     return ask_chatgpt(text, mode="structure")
@@ -207,46 +220,84 @@ def auto_fix_missing_fields(data: dict) -> dict:
     text = json.dumps(data, ensure_ascii=False, indent=2)
     return ask_chatgpt(text, mode="fix")
 
+def safe_parse_if_str(field):
+    if isinstance(field, str):
+        cleaned = field.strip()
+        if cleaned.startswith("[") and cleaned.endswith("]"):
+            try:
+                # Привести одиночные кавычки в валидный JSON
+                return json.loads(cleaned.replace("'", '"'))
+            except Exception:
+                try:
+                    return ast.literal_eval(cleaned)
+                except Exception:
+                    return []
+        try:
+            return json.loads(cleaned)
+        except Exception:
+            try:
+                return ast.literal_eval(cleaned)
+            except Exception:
+                return []
+    return field
+
+def safe_json_parse(raw):
+    """
+    Безопасно преобразует строку или объект в Python-словарь.
+    Если строка содержит JSON внутри строки (например "[{...}]"),
+    корректно разворачивает его.
+    """
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, list):
+        return raw
+    if not isinstance(raw, str):
+        return {}
+
+    try:
+        # 🧠 Пробуем обычный JSON
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # 🧩 Иногда GPT использует одинарные кавычки
+        try:
+            return json.loads(raw.replace("'", '"'))
+        except Exception:
+            pass
+        # 🧩 Иногда строка — это Python-представление
+        try:
+            return ast.literal_eval(raw)
+        except Exception as e:
+            logging.warning(f"⚠️ safe_json_parse failed: {e}")
+            return {}
+
 def run_robust_cv_parsing(text: str, model="gpt-5-mini") -> dict:
     """
-    Стабильный GPT-вызов с fallback логикой:
-    1. Попробовать structure → details
-    2. Если details упал → fix
-    3. Если всё упало → моно-вызов (один этап)
+    Stabiler GPT-Aufruf mit Fallback-Logik:
+    1. Versuche zuerst structure → details
+    2. Wenn details fehlschlägt → fix
+    3. Wenn alles fehlschlägt → Mono-Aufruf (einzelner Schritt)
     """
     try:
-        logging.info("🔎 Step 1: Extract structure")
-        structure_raw = ask_chatgpt(text, mode="structure")
-        base_structure = json.loads(structure_raw.get("raw_response", "{}"))
+        result = ask_chatgpt(text, model)
+        raw_response = result.get("raw_response", "")
+        parsed = safe_parse_if_str(raw_response)
 
-        logging.info("🧠 Step 2: Extract details")
-        detailed_result = ask_chatgpt(text, mode="details", base_structure=base_structure)
+        parsed["projects_experience"] = safe_parse_if_str(parsed.get("projects_experience"))
+        parsed["skills_overview"] = safe_parse_if_str(parsed.get("skills_overview"))
+        parsed["languages"] = safe_parse_if_str(parsed.get("languages"))
 
-        try:
-            parsed = json.loads(detailed_result.get("raw_response", "{}"))
-            return {"success": True, "json": parsed, "raw_response": detailed_result["raw_response"], "mode": "details"}
-        except json.JSONDecodeError:
-            logging.warning("⚠️ Step 2 failed, trying fix...")
-            fixed_result = ask_chatgpt(detailed_result.get("raw_response", "{}"), mode="fix")
-            try:
-                parsed_fixed = json.loads(fixed_result.get("raw_response", "{}"))
-                return {"success": True, "json": parsed_fixed, "raw_response": fixed_result["raw_response"], "mode": "fix"}
-            except json.JSONDecodeError:
-                logging.warning("⚠️ Fix also failed, trying mono mode...")
+        return {
+            "success": True,
+            "json": parsed,
+            "raw_response": raw_response,
+        }
+
     except Exception as e:
-        logging.error(f"❌ Structured pipeline failed: {e}")
-
-    # Mono fallback
-    logging.info("🚨 Mono mode fallback")
-    from chatgpt_client import ask_chatgpt as mono_mode
-    result = mono_mode(text)
-    if result.get("success"):
-        return result
-    return {"success": False, "json": {}, "raw_response": "", "mode": "fail"}
-
-
+        logging.error(f"❌ Parsing failed: {e}")
+        return {"success": False, "json": {}, "raw_response": ""}
+    
 # ============================================================
-# 🧪 Локальный запуск
+# 🧪 Lokaler Testlauf
 # ============================================================
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -272,14 +323,21 @@ if __name__ == "__main__":
 
     if "raw_response" in result:
         try:
-            filled_json = json.loads(result["raw_response"])
+            print("\nSTEP 1️⃣  RAW GPT RESPONSE:\n", result.get("raw_response")[:2000])
+            filled_json = safe_json_parse(result["raw_response"])
+            print("\nSTEP 2️⃣  AFTER safe_json_parse:\n", type(filled_json.get("projects_experience")), len(str(filled_json.get("projects_experience"))))
 
-            from postprocess import postprocess_filled_cv
             with open("debug/full_prepared_text.txt", "r", encoding="utf-8") as f:
                 raw_text = f.read()
 
-            filled_json = postprocess_filled_cv(filled_json, raw_text)
+            filled_json["projects_experience"] = safe_parse_if_str(filled_json.get("projects_experience"))
+            print("\nSTEP 3️⃣  AFTER safe_parse_if_str:\n", type(filled_json.get("projects_experience")), len(filled_json.get("projects_experience", [])))
 
+            filled_json["skills_overview"] = safe_parse_if_str(filled_json.get("skills_overview"))
+
+            filled_json = postprocess_filled_cv(filled_json, raw_text)
+            print("\nSTEP 3️⃣  AFTER safe_parse_if_str:\n", type(filled_json.get("projects_experience")), len(filled_json.get("projects_experience", [])))
+            
             with open(output_path, "w", encoding="utf-8") as out_f:
                 json.dump(filled_json, out_f, indent=2, ensure_ascii=False)
 

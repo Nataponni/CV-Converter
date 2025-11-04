@@ -2,103 +2,119 @@ import os
 import json
 import time
 import logging
-from multiprocessing import Process, Queue
 from pdf_processor import prepare_cv_text
-from postprocess import postprocess_filled_cv
-from chatgpt_client import ask_chatgpt
+from postprocess import postprocess_filled_cv, fix_open_date_ranges, safe_parse_if_str
+from chatgpt_client import run_robust_cv_parsing
+import ast
 
-# === Пути ===
+# === Pfade ===
 INPUT_PDF = "data_input/CV Manuel Wolfsgruber.pdf"
 RAW_GPT_JSON = "data_output/raw_gpt.json"
 OUTPUT_JSON = "data_output/result_Manuel_1.json"
 
-# --- вынесенная функция ---
-def gpt_worker(q, mode, text, base_structure):
-    """Выполняет изолированный вызов GPT в отдельном процессе."""
-    from chatgpt_client import ask_chatgpt
-    result = ask_chatgpt(text, mode=mode, base_structure=base_structure)
-    q.put(result)
-
-
-def ask_chatgpt_isolated(mode, text, base_structure=None):
-    q = Queue()
-    p = Process(target=gpt_worker, args=(q, mode, text, base_structure))
-    p.start()
-    p.join()
-
-    if not q.empty():
-        return q.get()
-    else:
-        logging.warning("⚠️ No data returned from GPT subprocess.")
-        return {"raw_response": "", "error": "No data returned from subprocess"}
-
-# === Основной пайплайн ===
+# === Hauptpipeline ===
 def main():
     start_time = time.time()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    logging.info("🚀 Starting full CV pipeline (PDF → GPT → JSON)...")
+    logging.info("🚀 Starte vollständige CV-Pipeline (PDF → GPT → JSON)...")
 
-    # 1️⃣ Подготовка текста
+    # 1️⃣ Textvorbereitung (включая объединение блоков)
     prepared_text, raw_text = prepare_cv_text(INPUT_PDF)
-    logging.info("📄 Text successfully extracted and normalized.")
+    logging.info("📄 Text erfolgreich extrahiert und normalisiert (inkl. Projektdaten & Datumszeilen).")
 
-# 2️⃣ STRUCTURE
-    logging.info("📨 Requesting structure from GPT...")
-    structure_raw = ask_chatgpt(prepared_text, mode="structure")
+    # 2️⃣ Anfrage an GPT mit Fallback-Logik
+    logging.info("🧠 Starte robuste GPT-Analyse...")
+    result = run_robust_cv_parsing(prepared_text)
 
-    if not structure_raw or "raw_response" not in structure_raw:
-        logging.error("❌ Failed to get structure from GPT.")
+    if not result.get("success"):
+        logging.error("❌ GPT hat keine gültige Antwort geliefert.")
         return
 
-    try:
-        base_structure = json.loads(structure_raw["raw_response"])
-    except Exception as e:
-        logging.error(f"⚠️ Structure parsing failed: {e}")
-        base_structure = None
+    # 3️⃣ Rohdaten extrahieren
+    filled_json = result.get("json", {})
+    raw_gpt_response = result.get("raw_response", "")
 
-    # 3️⃣ DETAILS
-    logging.info("📨 Requesting detailed CV data from GPT...")
-    result = ask_chatgpt(prepared_text, mode="details", base_structure=base_structure)
+    # 4️⃣ Passenden raw_text wählen
+    raw_for_postprocess = raw_text
+    if result.get("mode") == "direct-json":
+        raw_for_postprocess = json.dumps(filled_json, ensure_ascii=False, indent=2)
 
+    # 5️⃣ Rohdaten speichern
+    os.makedirs(os.path.dirname(RAW_GPT_JSON), exist_ok=True)
+    with open(RAW_GPT_JSON, "w", encoding="utf-8") as f:
+        json.dump(filled_json, f, indent=2, ensure_ascii=False)
+    logging.info(f"💾 Rohdaten von GPT gespeichert unter: {RAW_GPT_JSON}")
 
-    if not result or "raw_response" not in result:
-        logging.error("❌ GPT did not return a valid response.")
-        return
+    # 6️⃣ Универсальная стабилизация типов
+    for key in ["projects_experience", "skills_overview", "languages"]:
+        filled_json[key] = safe_parse_if_str(filled_json.get(key))
+        # если все еще строка — пробуем через ast.literal_eval
+        if isinstance(filled_json.get(key), str):
+            try:
+                filled_json[key] = ast.literal_eval(filled_json[key])
+            except Exception:
+                filled_json[key] = []
 
-    # 4️⃣ Сохраняем "сырой" JSON
-    try:
-        filled_json = json.loads(result["raw_response"])
-        os.makedirs(os.path.dirname(RAW_GPT_JSON), exist_ok=True)
-        with open(RAW_GPT_JSON, "w", encoding="utf-8") as f:
-            json.dump(filled_json, f, indent=2, ensure_ascii=False)
-        logging.info(f"💾 Raw GPT output saved to: {RAW_GPT_JSON}")
-    except json.JSONDecodeError as e:
-        logging.error("❌ Invalid JSON from GPT:")
-        logging.error(e)
-        return
+    # 7️⃣ Nachbearbeitung (постпроцессинг)
+    logging.info("🧩 Führe Nachbearbeitung durch...")
+    filled_json = postprocess_filled_cv(filled_json, raw_for_postprocess)
 
-    # 5️⃣ Постобработка
-    logging.info("🧩 Running postprocessing...")
-    filled_json = postprocess_filled_cv(filled_json, raw_text)
+    # 🧠 Повторная стабилизация после постпроцессора
+    for key in ["projects_experience", "skills_overview", "languages"]:
+        filled_json[key] = safe_parse_if_str(filled_json.get(key))
+        if isinstance(filled_json.get(key), str):
+            try:
+                filled_json[key] = ast.literal_eval(filled_json[key])
+            except Exception:
+                filled_json[key] = []
 
-    # 6️⃣ Метаданные
+    # 8️⃣ Автозаполнение ролей и дат (если GPT пропустил)
+    for project in filled_json.get("projects_experience", []):
+        # --- Role recovery ---
+        if not project.get("role"):
+            title = project.get("project_title", "")
+            if title:
+                import re
+                match = re.search(r"\b(Developer|Engineer|Architect|Consultant|Manager|Lead|Analyst|Director|Specialist)\b", title, re.I)
+                if match:
+                    project["role"] = match.group(1)
+                else:
+                    project["role"] = "Consultant"
+
+        # --- Duration recovery ---
+        if not project.get("duration"):
+            overview = project.get("overview", "")
+            import re
+            date_match = re.search(r"(\d{1,2}\.\d{2})\s*[–-]\s*(Jetzt|Heute|Present|\d{1,2}\.\d{2})", title + " " + overview)
+            if date_match:
+                start, end = date_match.groups()
+                project["duration"] = f"{start} – {end}"
+            else:
+                prev = next((p for p in filled_json.get("projects_experience", []) if p.get("duration")), None)
+                project["duration"] = prev["duration"] if prev else "Unspecified"
+
+    # 👇 Auf offene Datumsbereiche prüfen (z. B. „bis heute“)
+    filled_json = fix_open_date_ranges(filled_json)
+
+    # 9️⃣ Metadaten hinzufügen
     filled_json["_meta"] = {
         "source_pdf": INPUT_PDF,
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "processing_time_sec": round(time.time() - start_time, 2),
         "model": "gpt-5-mini",
+        "gpt_mode": result.get("mode")
     }
 
-    # 7️⃣ Сохраняем финал
+    # 🔟 Finale Daten speichern
     os.makedirs(os.path.dirname(OUTPUT_JSON), exist_ok=True)
     with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
         json.dump(filled_json, f, indent=2, ensure_ascii=False)
 
-    logging.info(f"✅ Final result saved to: {OUTPUT_JSON}")
-    logging.info(f"📊 Projects: {len(filled_json.get('projects_experience', []))}")
-    logging.info(f"🗣 Languages: {len(filled_json.get('languages', []))}")
-    logging.info(f"⏱ Duration: {round(time.time() - start_time, 2)} sec")
-
+    # ℹ️ Logging summary
+    logging.info(f"✅ Endergebnis gespeichert unter: {OUTPUT_JSON}")
+    logging.info(f"📊 Projekte: {len(filled_json.get('projects_experience', []))}")
+    logging.info(f"🗣 Sprachen: {len(filled_json.get('languages', []))}")
+    logging.info(f"⏱ Dauer: {round(time.time() - start_time, 2)} Sekunden")
 
 if __name__ == "__main__":
     main()

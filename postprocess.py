@@ -1,8 +1,8 @@
 import re
 import json
+import ast
 from collections import defaultdict
 from datetime import datetime
-from pdf_processor import normalize_year
 
 # ===============================================
 # 🔤 Языки
@@ -114,6 +114,37 @@ def unify_durations(projects):
 
     return projects
 
+def normalize_year(text: str) -> str:
+    """
+    Normalisiert Jahresangaben aus verschiedenen Formaten.
+    Unterstützte Beispiele:
+    '07.21' → '2021'
+    '07/2021' → '2021'
+    '2020' → '2020'
+    '21' → '2021'
+    """
+    import re
+
+    if not text:
+        return ""
+
+    text = str(text).strip()
+
+    # Versuche, Jahr mit 4 Ziffern zu finden (z. B. 2021 oder 1999)
+    match = re.search(r"\b(19|20)\d{2}\b", text)
+    if match:
+        return match.group(0)
+
+    # Zweistelliges Jahr erkennen und auf 20xx mappen
+    match = re.search(r"\b(\d{2})\b", text)
+    if match:
+        year = int(match.group(1))
+        # Heuristik: falls < 30 → 2000+, sonst 1900+
+        return f"20{year:02d}" if year < 30 else f"19{year:02d}"
+
+    return ""
+
+
 # ============================================================
 # 📆 Исправление открытых диапазонов дат
 # ============================================================
@@ -121,13 +152,15 @@ def fix_open_date_ranges(text_or_json):
     if isinstance(text_or_json, dict):
         for key, value in text_or_json.items():
             if isinstance(value, dict):
-                fix_open_date_ranges(value)
+                text_or_json[key] = fix_open_date_ranges(value)
             elif isinstance(value, list):
-                for i, item in enumerate(value):
-                    if isinstance(item, dict):
-                        fix_open_date_ranges(item)
-                    elif isinstance(item, str):
-                        text_or_json[key][i] = fix_open_date_ranges(item)
+                new_list = []
+                for item in value:
+                    if isinstance(item, (dict, str)):
+                        new_list.append(fix_open_date_ranges(item))
+                    else:
+                        new_list.append(item)
+                text_or_json[key] = new_list
             elif key.lower() in ["duration", "years_of_experience"] and isinstance(value, str):
                 text_or_json[key] = fix_open_date_ranges(value)
         return text_or_json
@@ -148,10 +181,6 @@ def fix_open_date_ranges(text_or_json):
 
     return text
 
-# ===============================================
-# 🧹 Очистка hard_skills
-# ===============================================
-
 def clean_duplicates_in_skills(skills):
     if not isinstance(skills, dict):
         return {}
@@ -168,10 +197,6 @@ def clean_duplicates_in_skills(skills):
                 seen.add(value)
         cleaned[cat] = unique
     return cleaned
-
-# ===============================================
-# 📊 skills_overview: разделить инструменты
-# ===============================================
 
 def split_skills_overview_rows(skills):
     if not isinstance(skills, list):
@@ -219,9 +244,11 @@ def generate_skills_overview(skills_overview_raw):
 
         grouped[category]["tools"].append(tool)
         try:
-            grouped[category]["years"].append(float(years))
-        except ValueError:
-            continue
+            years_clean = re.sub(r"[^\d.]", "", years)
+            grouped[category]["years"].append(float(years_clean) if years_clean else 0)
+        except Exception:
+            grouped[category]["years"].append(0)
+
 
     final_overview = []
     for category, data in grouped.items():
@@ -250,21 +277,95 @@ def filter_skills_overview(skills):
             filtered.append(item)
     return filtered
 
+# Защита для вложенных строк
+def safe_parse_if_str(field):
+    if isinstance(field, str):
+        try:
+            return json.loads(field)
+        except json.JSONDecodeError:
+            try:
+                return ast.literal_eval(field)
+            except Exception:
+                return []
+    return field
 # ===============================================
 # 🧩 Основной вызов
 # ===============================================
 
 def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
-    data["languages"] = unify_languages(data.get("languages", []), original_text)
+    # 🧩 Если проекты пришли строкой — распарсим обратно в список
+    if isinstance(data.get("projects_experience"), str):
+        import json, ast
+        try:
+            data["projects_experience"] = json.loads(data["projects_experience"].replace("'", '"'))
+        except Exception:
+            try:
+                data["projects_experience"] = ast.literal_eval(data["projects_experience"])
+            except Exception:
+                data["projects_experience"] = []
+
+    # 📌 Применим исправление к duration
     data["projects_experience"] = unify_durations(data.get("projects_experience", []))
+    data["projects_experience"] = fix_open_date_ranges(data["projects_experience"])
+
+    # 📌 Skills
     data["hard_skills"] = clean_duplicates_in_skills(data.get("hard_skills", {}))
 
-    # 🧠 skills_overview: нормализовать, разделить, пересчитать, отфильтровать
+    # 📌 Skills overview
     flat_skills = split_skills_overview_rows(data.get("skills_overview", []))
     reconstructed = generate_skills_overview(flat_skills)
     data["skills_overview"] = filter_skills_overview(reconstructed)
 
+    # 📌 Очистка текста
+    data = clean_text_fields(data)
+
+    # 🧠 Страховка — если после обработки опять строка, парсим повторно
+    if isinstance(data.get("projects_experience"), str):
+        import ast
+        try:
+            data["projects_experience"] = ast.literal_eval(data["projects_experience"])
+        except Exception:
+            data["projects_experience"] = []
+
+    # ===============================================
+    # 🧠 Автозаполнение role и duration, если GPT пропустил
+    # ===============================================
+    for project in data.get("projects_experience", []):
+        title = project.get("project_title", "") or ""
+        overview = project.get("overview", "") or ""
+        tech = " ".join(project.get("tech_stack", [])) if project.get("tech_stack") else ""
+
+        combined_text = " ".join([title, overview, tech])
+
+        # --- ROLE (только из текущего проекта) ---
+        if not project.get("role"):
+            role_match = re.search(
+                r"\b(CEO|Lead|Senior|Junior|Data|BI|Cloud|AI|ML|DevOps)?\s*"
+                r"(Developer|Engineer|Architect|Consultant|Manager|Analyst|Director|Specialist)\b",
+                combined_text,
+                re.I,
+            )
+            if role_match:
+                parts = [p for p in role_match.groups() if p]
+                project["role"] = " ".join(parts).strip().title()
+            else:
+                project["role"] = ""
+
+        # --- DURATION (только из текста текущего проекта) ---
+        if not project.get("duration"):
+            duration_match = re.search(
+                r"(\d{1,2}\.\d{2}|\b(19|20)\d{2}\b)\s*[–-]\s*(Jetzt|Heute|Present|\d{1,2}\.\d{2}|\b(19|20)\d{2}\b)",
+                combined_text,
+            )
+            if duration_match:
+                start = duration_match.group(1)
+                end = duration_match.group(3)
+                project["duration"] = f"{start} – {end}"
+            else:
+                project["duration"] = ""
     return data
+
+
 
 # ===============================================
 # 🧼 Очистка текстов и проверка структуры

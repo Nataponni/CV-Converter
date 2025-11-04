@@ -678,43 +678,113 @@ def make_skills_overview_box(data, styles):
 
 
 # --- Главная сборка ---
-def create_pretty_first_section(json_data, output_dir=".", prefix="CV"):
-    full_name = json_data.get("full_name", "Unknown")
-    safe = sanitize_filename(full_name)
-    fname = f"{prefix}_{safe}_{date.today().isoformat()}.pdf"
+def create_pretty_first_section(json_data, output_dir=".", prefix="CV Inpro"):
+    """Создаёт PDF-файл с именем 'CV Inpro <Vorname> <Position>.pdf' безопасным для Windows."""
+    full_name = json_data.get("full_name", "Unknown").strip()
+    title = json_data.get("title", "").strip()
+
+    # Объединяем имя и должность в одну строку и сразу очищаем
+    raw_filename = f"{prefix} {full_name} {title}".strip()
+    safe_filename = sanitize_filename(raw_filename)
+
+    # Добавим расширение
+    fname = f"{safe_filename}.pdf"
     out_path = os.path.join(output_dir, fname)
 
-    doc = SimpleDocTemplate(out_path, pagesize=A4,
-                            leftMargin=18*mm, rightMargin=18*mm,
-                            topMargin=25*mm, bottomMargin=18*mm)
+    # Создание PDF
+    doc = SimpleDocTemplate(
+        out_path,
+        pagesize=A4,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=25 * mm,
+        bottomMargin=18 * mm,
+    )
 
     elements = []
     elements += make_first_page_section(json_data, styles)
+
     overview_box = make_overview_box(json_data, styles)
     if overview_box:
         elements.append(overview_box)
+
     projects_section = make_projects_section(json_data.get("projects_experience", []), styles)
     elements += projects_section
+
     skills_overview_box = make_skills_overview_box(json_data, styles)
     if skills_overview_box:
         elements.extend([Spacer(1, 6), *skills_overview_box])
 
-
-    
     # Построение PDF с фирменным хедером и футером
     doc.build(elements, onFirstPage=add_inpro_header_footer, onLaterPages=add_inpro_header_footer)
 
     return out_path
 
 # ============================================================
-#  Обёртка для Streamlit — возвращает PDF как байты
+#  Обёртка для Streamlit — возвращает PDF как байты + Ähnlichkeitsbewertung
 # ============================================================
 import io, os, glob
+import streamlit as st
+from PyPDF2 import PdfReader
+from difflib import SequenceMatcher
+import re
 
-def generate_report_pdf_bytes(filled_json):
+def extract_text_from_pdf(path: str) -> str:
+    """Extrahiert Text seitenweise aus einem PDF."""
+    reader = PdfReader(path)
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+def text_similarity(a: str, b: str) -> float:
+    """Berechnet prozentuale Textähnlichkeit zwischen zwei Texten."""
+    return round(SequenceMatcher(None, a.lower(), b.lower()).ratio() * 100, 1)
+
+def compare_sections(original_text: str, inpro_text: str):
+    """Vergleicht Original- und Inpro-CV nach inhaltlichen Abschnitten."""
+    sections = {
+        "Profil / Zusammenfassung": ["summary", "profil", "über mich"],
+        "Ausbildung": ["education", "ausbildung", "fh"],
+        "Sprachen": ["languages", "sprachen"],
+        "Fachbereiche / Domains": ["domains", "bereiche"],
+        "Projekte & Berufserfahrung": ["project", "experience", "erfahrung", "berufliche"],
+        "Technische Kompetenzen (Hard Skills)": ["skills", "technologies", "hard", "overview"],
+    }
+
+    results = []
+    for name, keywords in sections.items():
+        pattern = re.compile("|".join(keywords), re.IGNORECASE)
+        orig_block = "\n".join([l for l in original_text.splitlines() if pattern.search(l)])
+        inpro_block = "\n".join([l for l in inpro_text.splitlines() if pattern.search(l)])
+        score = text_similarity(orig_block, inpro_block)
+        results.append((name, score))
+    return results
+
+
+def show_similarity_results(original_pdf_path, generated_pdf_path):
+    """Zeigt die Vergleichsergebnisse im Streamlit-Dashboard an."""
+    if not (os.path.exists(original_pdf_path) and os.path.exists(generated_pdf_path)):
+        st.warning("⚠️ Die Dateien zum Vergleich wurden nicht gefunden.")
+        return
+
+    st.subheader("📊 Ähnlichkeitsbewertung der CVs nach Abschnitten")
+
+    orig_text = extract_text_from_pdf(original_pdf_path)
+    gen_text = extract_text_from_pdf(generated_pdf_path)
+    comparison = compare_sections(orig_text, gen_text)
+
+    table_data = []
+    for section, score in comparison:
+        table_data.append({"Abschnitt": section, "Übereinstimmung (%)": score})
+    avg = round(sum(x["Übereinstimmung (%)"] for x in table_data) / len(table_data), 1)
+
+    st.table(table_data)
+    st.markdown(f"### 🟩 Durchschnittliche Übereinstimmung: **{avg}%**")
+
+
+def generate_report_pdf_bytes(filled_json, original_pdf_path=None):
     """
     Генерирует PDF через create_pretty_first_section()
-    и возвращает байты для скачивания в Streamlit.
+    и показывает Ähnlichkeitsbewertung в Streamlit (wenn Original vorhanden).
+    Возвращает байты PDF.
     """
     output_dir = "data_output"
     os.makedirs(output_dir, exist_ok=True)
@@ -732,10 +802,20 @@ def generate_report_pdf_bytes(filled_json):
         raise FileNotFoundError("Не найден созданный PDF-файл после генерации.")
 
     latest_pdf = pdf_files[0]
+
+    # 📊 Vergleich anzeigen, falls Original vorhanden
+    if original_pdf_path and os.path.exists(original_pdf_path):
+        try:
+            show_similarity_results(original_pdf_path, latest_pdf)
+        except Exception as e:
+            st.warning(f"⚠️ Fehler bei der Ähnlichkeitsbewertung: {e}")
+
+    # вернуть PDF-байты
     with open(latest_pdf, "rb") as f:
         pdf_bytes = f.read()
 
     return pdf_bytes
+
 
 # --- Запуск ---
 if __name__ == "__main__":
