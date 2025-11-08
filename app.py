@@ -21,7 +21,10 @@ if uploaded_file:
 
     # 2️⃣ Konvertierung starten
     if st.button("🚀 Konvertierung starten"):
-        progress = st.progress(0)
+        # Sichtbare, persistente Status-Komponenten
+        progress_box = st.container()
+        with progress_box:
+            progress = st.progress(1)
         status_text = st.empty()
         time_info = st.empty()
         start_time = time.time()
@@ -47,14 +50,15 @@ if uploaded_file:
             t.start()
 
             anim_start = time.time()
-            # animate progress between 26..55 while waiting
-            while t.is_alive():
-                elapsed = time.time() - start_time
-                step = int((time.time() - anim_start) * 10) % 30  # 0..29
-                prog_value = 26 + step
-                progress.progress(min(prog_value, 55))
-                time_info.text(f"⏱ {round(elapsed, 1)} Sekunden vergangen")
-                time.sleep(0.2)
+            # animate progress between 5..95 while waiting
+            with st.spinner("Modell arbeitet…"):
+                while t.is_alive():
+                    elapsed = time.time() - start_time
+                    step = int((time.time() - anim_start) * 20) % 91  # 0..90
+                    prog_value = 5 + step
+                    progress.progress(min(prog_value, 95))
+                    time_info.text(f"⏱ {round(elapsed, 1)} Sekunden vergangen")
+                    time.sleep(0.15)
 
             if holder.get("error"):
                 raise holder["error"]
@@ -134,6 +138,12 @@ if "filled_json" in st.session_state:
 
     # Создаем редактируемую копию
     edited = dict(st.session_state["filled_json"]) if isinstance(st.session_state["filled_json"], dict) else {}
+    # Нормализация ключа languages, чтобы редактор всегда отображался
+    if not isinstance(edited.get("languages"), list):
+        if isinstance(edited.get("languages"), str) and edited["languages"].strip():
+            edited["languages"] = []  # можно попытаться разобрать, но лучше явно пустой список
+        else:
+            edited["languages"] = []
 
     # Основные поля
     col_a, col_b = st.columns(2)
@@ -224,15 +234,33 @@ if "filled_json" in st.session_state:
         skills_text = st.text_area("Fähigkeiten (durch Komma getrennt)", value=skills_text, height=80, key="skills_text")
         edited["skills"] = [s.strip() for s in skills_text.split(",") if s.strip()]
 
-    # Языки (list[dict])
+    # Языки (list[dict]) — поддержка пустого списка через шаблон строки
     if isinstance(edited.get("languages"), list):
         with st.expander("Sprachen (languages)", expanded=False):
-            edited["languages"] = st.data_editor(
-                edited["languages"],
+            lang_rows = edited.get("languages", [])
+            template_row = {"language": "", "level": ""}
+            if not lang_rows:
+                lang_rows = [template_row]
+            # column_config, чтобы появились столбцы даже при пустых/шаблонных данных
+            lang_rows = st.data_editor(
+                lang_rows,
                 num_rows="dynamic",
                 use_container_width=True,
+                column_config={
+                    "language": st.column_config.TextColumn("Sprache"),
+                    "level": st.column_config.TextColumn("Niveau")
+                },
                 key="ed_languages"
             )
+            # очищаем полностью пустые строки
+            cleaned_langs = []
+            for r in lang_rows:
+                if isinstance(r, dict):
+                    lang = str(r.get("language", "")).strip()
+                    lvl = str(r.get("level", "")).strip()
+                    if lang or lvl:
+                        cleaned_langs.append({"language": lang, "level": lvl})
+            edited["languages"] = cleaned_langs
 
     # Домены (list[str])
     if isinstance(edited.get("domains"), list):
@@ -287,6 +315,12 @@ if "filled_json" in st.session_state:
             # Нормализуем должность → title
             if not edited.get("title"):
                 edited["title"] = edited.get("position") or edited.get("role") or ""
+            # Удаляем полностью пустые записи языков, если остались
+            if isinstance(edited.get("languages"), list):
+                edited["languages"] = [
+                    r for r in edited["languages"]
+                    if isinstance(r, dict) and (str(r.get("language", "")).strip() or str(r.get("level", "")).strip())
+                ]
             st.session_state["filled_json"] = edited
             st.session_state["json_bytes"] = json.dumps(edited, indent=2, ensure_ascii=False).encode("utf-8")
             st.success("Änderungen gespeichert")
