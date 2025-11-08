@@ -25,6 +25,7 @@ if uploaded_file:
         progress_box = st.container()
         with progress_box:
             progress = st.progress(1)
+        progress_value = 1
         status_text = st.empty()
         time_info = st.empty()
         start_time = time.time()
@@ -36,6 +37,7 @@ if uploaded_file:
             for i in range(1, 26, 2):
                 time.sleep(0.1)
                 progress.progress(i)
+                progress_value = i
                 time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
 
             # --- Schritt 2: Anfrage an ChatGPT ---
@@ -54,9 +56,9 @@ if uploaded_file:
             with st.spinner("Modell arbeitet…"):
                 while t.is_alive():
                     elapsed = time.time() - start_time
-                    step = int((time.time() - anim_start) * 20) % 91  # 0..90
-                    prog_value = 5 + step
-                    progress.progress(min(prog_value, 95))
+                    # Monotones Fortschreiten bis max. 95%
+                    progress_value = min(progress_value + 1, 95)
+                    progress.progress(progress_value)
                     time_info.text(f"⏱ {round(elapsed, 1)} Sekunden vergangen")
                     time.sleep(0.15)
 
@@ -73,6 +75,7 @@ if uploaded_file:
                 for i in range(56, 76, 2):
                     time.sleep(0.15)
                     progress.progress(i)
+                    progress_value = i
                     time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
 
                 # --- Schritt 4: PDF generieren (einmalig) ---
@@ -91,6 +94,7 @@ if uploaded_file:
                 for i in range(76, 96, 2):
                     time.sleep(0.05)
                     progress.progress(i)
+                    progress_value = i
                     time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
 
                 # --- Automatische Benennung des Dokuments ---
