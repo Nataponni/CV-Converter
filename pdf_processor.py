@@ -42,8 +42,8 @@ def tag_dates(text: str) -> str:
         r"\b(0?[1-9]|1[0-2])\/(\d{4})\s*[-–]\s*(Jetzt|Derzeit|Heute|Present|Now|Aktuell)\b",
         r"(?i)\b(seit|since)\s+(0?[1-9]|1[0-2])[./](\d{2,4})\b",
         r"\b(20\d{2}|19\d{2})\s*[-–]\s*(20\d{2}|Present|Now|Heute|Jetzt|Aktuell)\b",
-        r"(?:(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)\s+\d{4}\s*[-–]\s*(?:Jan|Feb|...)?[a-z]*\s*\d{4}",
-        r"\b(Jan|Feb|Mar|...)\s+\d{4}\s*[-–]\s*(Present|Now|\d{4})",
+        r"(?:(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)\s+\d{4}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?[a-z]*\s*\d{4}",
+        r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*[-–]\s*(Present|Now|\d{4})",
         r"\b(0?[1-9]|1[0-2])[./-](\d{2,4})\s*[-–]\s*(0?[1-9]|1[0-2])[./-](\d{2,4})\b",
     ]
 

@@ -40,6 +40,8 @@ INSTRUCTIONS:
 - Extract a complete, structured JSON strictly following the provided SCHEMA.
 - Detect the candidate’s actual domain (e.g., Cloud, DevOps, BI, Data Engineering) based on tools, project content, and terminology.
 - Avoid assumptions — rely only on what's clearly stated or strongly implied in the resume.
+- If a field is unknown or not present in the CV, use empty values: "" for strings, [] for lists, {{}} for objects. Do NOT guess.
+- Do NOT wrap arrays or objects into strings. Always output proper JSON values.
 - Always extract and include exact start and end dates for every project, job, or education entry.
 
 === PROJECTS ===
@@ -108,28 +110,12 @@ In the "projects_experience" field:
       {{"language": "English", "level": "C1"}}
   ]
 
-=== DATE FORMATTING ===
-- Convert formats like:
-  * "07.21 –" → "Jul 2021 – Present"
-  * "07.21 – 12.23" → "Jul 2021 – Dec 2023"
-  * "2020" → "Jan 2020 – Dec 2020"
-  * German words like "Jetzt", "Heute", "Derzeit" → "Present"
-
 === OUTPUT RULES ===
 - Return a single valid JSON object strictly matching the SCHEMA.
 - Do NOT return markdown, explanations, comments, or prose — only JSON.
 - Do NOT hallucinate tools, projects, dates, or titles.
 - Do NOT change field names or structure.
-- Dates must be extracted even if embedded in non-standard formats, such as:
-  * PowerPoint-style bullets or slide-like phrasing
-  * Freeform text, e.g., "During my MSc in 2021 I..."
-  * Visual or manual formats, e.g., "07/21", "since 2020", "2020 – today"
-- Always scan project descriptions, role titles, and surrounding context for implicit time references.
-- If a date is mentioned indirectly (e.g., "as part of my 2022 thesis"), infer the full range logically (e.g., "Jan 2022 – Dec 2022").
-  - Accept formats like:
-  * "07/21", "07.21", "07-21"
-  * "seit 2020", "from 2020", "during 2020"
-  * "2020 – heute", "2020 – now", "2020 – aktuell"
+- Dates must be copied exactly as in the source (no reformatting, no translation). If unclear or not present, leave empty.
 
 SCHEMA:
 {{
@@ -219,27 +205,6 @@ def extract_details_with_gpt(text: str, structure: dict) -> dict:
 def auto_fix_missing_fields(data: dict) -> dict:
     text = json.dumps(data, ensure_ascii=False, indent=2)
     return ask_chatgpt(text, mode="fix")
-
-def safe_parse_if_str(field):
-    if isinstance(field, str):
-        cleaned = field.strip()
-        if cleaned.startswith("[") and cleaned.endswith("]"):
-            try:
-                # Привести одиночные кавычки в валидный JSON
-                return json.loads(cleaned.replace("'", '"'))
-            except Exception:
-                try:
-                    return ast.literal_eval(cleaned)
-                except Exception:
-                    return []
-        try:
-            return json.loads(cleaned)
-        except Exception:
-            try:
-                return ast.literal_eval(cleaned)
-            except Exception:
-                return []
-    return field
 
 def safe_json_parse(raw):
     """

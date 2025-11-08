@@ -1,5 +1,6 @@
 import streamlit as st
 import json, os, tempfile, time
+import threading
 from pdf_processor import prepare_cv_text
 from chatgpt_client import ask_chatgpt
 from postprocess import postprocess_filled_cv
@@ -36,12 +37,28 @@ if uploaded_file:
 
             # --- Schritt 2: Anfrage an ChatGPT ---
             status_text.text("🤖 Anfrage wird an ChatGPT gesendet…")
-            for i in range(26, 56, 2):
-                time.sleep(0.3)
-                progress.progress(i)
-                time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
+            holder = {"value": None, "error": None}
+            def _run_gpt():
+                try:
+                    holder["value"] = ask_chatgpt(prepared_text, mode="details")
+                except Exception as e:
+                    holder["error"] = e
+            t = threading.Thread(target=_run_gpt, daemon=True)
+            t.start()
 
-            result = ask_chatgpt(prepared_text, mode="details")
+            anim_start = time.time()
+            # animate progress between 26..55 while waiting
+            while t.is_alive():
+                elapsed = time.time() - start_time
+                step = int((time.time() - anim_start) * 10) % 30  # 0..29
+                prog_value = 26 + step
+                progress.progress(min(prog_value, 55))
+                time_info.text(f"⏱ {round(elapsed, 1)} Sekunden vergangen")
+                time.sleep(0.2)
+
+            if holder.get("error"):
+                raise holder["error"]
+            result = holder.get("value")
 
             # --- Schritt 3: JSON verarbeiten ---
             if "raw_response" in result and result["raw_response"]:
@@ -54,34 +71,29 @@ if uploaded_file:
                     progress.progress(i)
                     time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
 
-                # --- Schritt 4: PDF generieren ---
+                # --- Schritt 4: PDF generieren (einmalig) ---
                 status_text.text("📝 PDF wird erstellt…")
                 output_dir = "data_output"
                 os.makedirs(output_dir, exist_ok=True)
 
-                first_name = filled_json.get("first_name", "").strip().title() or "Unbekannt"
-                position = filled_json.get("position", "").strip().title() or "Unbekannte Position"
-                pdf_name = f"CV Inpro {first_name} {position}"
+                # Нормализация должности в ключ 'title'
+                if not filled_json.get("title"):
+                    filled_json["title"] = (
+                        filled_json.get("position")
+                        or filled_json.get("role")
+                        or ""
+                    )
 
-                pdf_path = create_pretty_first_section(filled_json, output_dir=output_dir, prefix=pdf_name)
-                with open(pdf_path, "rb") as f:
-                    pdf_bytes = f.read()
-
-                for i in range(76, 100, 2):
+                for i in range(76, 96, 2):
                     time.sleep(0.05)
                     progress.progress(i)
                     time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
 
-                progress.progress(100)
-                elapsed = round(time.time() - start_time, 1)
-                status_text.text(f"✅ Fertig in {elapsed} Sekunden!")
-                st.success("✅ Konvertierung abgeschlossen!")
-
                 # --- Automatische Benennung des Dokuments ---
                 full_name = filled_json.get("full_name", "").strip()
                 position = (
-                    filled_json.get("position")
-                    or filled_json.get("title")
+                    filled_json.get("title")
+                    or filled_json.get("position")
                     or filled_json.get("role")
                     or ""
                 ).strip()
@@ -117,6 +129,189 @@ if uploaded_file:
 
 # 3️⃣ Downloadbereich
 if "filled_json" in st.session_state:
+    st.markdown("---")
+    st.subheader("🛠 Manuelle Bearbeitung")
+
+    # Создаем редактируемую копию
+    edited = dict(st.session_state["filled_json"]) if isinstance(st.session_state["filled_json"], dict) else {}
+
+    # Основные поля
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if "full_name" in edited:
+            edited["full_name"] = st.text_input("Vollständiger Name", value=str(edited.get("full_name", "")), key="full_name")
+        if "first_name" in edited:
+            edited["first_name"] = st.text_input("Vorname", value=str(edited.get("first_name", "")), key="first_name")
+    with col_b:
+        # Единый ключ: title
+        if "title" in edited or any(k in edited for k in ["position", "role"]):
+            current_title = str(edited.get("title") or edited.get("position") or edited.get("role") or "")
+            edited["title"] = st.text_input("Position (title)", value=current_title, key="title")
+
+    # Контакты (dict)
+    if isinstance(edited.get("contacts"), dict):
+        with st.expander("Kontakte", expanded=False):
+            contacts = dict(edited.get("contacts", {}))
+            for k, v in contacts.items():
+                contacts[k] = st.text_input(f"{k}", value=str(v), key=f"contacts_{k}")
+            edited["contacts"] = contacts
+
+    # Короткое описание / Summary
+    if "profile_summary" in edited:
+        edited["profile_summary"] = st.text_area("Kurzbeschreibung (profile_summary)", value=str(edited.get("profile_summary", "")), height=140, key="profile_summary")
+    else:
+        for summary_key in ["summary", "about", "profile"]:
+            if summary_key in edited:
+                edited[summary_key] = st.text_area("Kurzbeschreibung", value=str(edited.get(summary_key, "")), height=140, key=f"{summary_key}")
+                break
+
+    # Опыт / Проекты (list[dict]) — основной ключ: projects_experience
+    if isinstance(edited.get("projects_experience"), list):
+        with st.expander("Projekte / Erfahrung (projects_experience)", expanded=True):
+            # Подсказка структуры
+            st.caption("Struktur: { project_title, overview, role, duration, responsibilities[], tech_stack[] }")
+            # Табличный редактор с возможностью добавлять/удалять строки
+            edited["projects_experience"] = st.data_editor(
+                edited["projects_experience"],
+                num_rows="dynamic",
+                use_container_width=True,
+                key="ed_projects_experience"
+            )
+
+            # Удаление дублей (по паре project_title+duration)
+            def _dedupe_projects(items: list[dict]) -> list[dict]:
+                seen = set()
+                result = []
+                for it in items:
+                    if not isinstance(it, dict):
+                        continue
+                    key = (str(it.get("project_title", "")).strip().lower(), str(it.get("duration", "")).strip().lower())
+                    if key not in seen:
+                        seen.add(key)
+                        result.append(it)
+                return result
+            if st.button("🧹 Doppelte Projekte entfernen", key="btn_dedupe_projects"):
+                edited["projects_experience"] = _dedupe_projects(edited.get("projects_experience", []))
+                st.success("Duplikate entfernt")
+    else:
+        # Альтернативные ключи, если структура иная
+        for exp_key in ["experience", "work_experience", "jobs"]:
+            if isinstance(edited.get(exp_key), list):
+                with st.expander("Berufserfahrung", expanded=False):
+                    edited[exp_key] = st.data_editor(
+                        edited[exp_key],
+                        num_rows="dynamic",
+                        use_container_width=True,
+                        key=f"ed_{exp_key}"
+                    )
+                break
+
+    # Образование: поддержка строкового поля или списка объектов
+    if isinstance(edited.get("education"), list):
+        with st.expander("Ausbildung (education)", expanded=False):
+            edited["education"] = st.data_editor(
+                edited["education"],
+                num_rows="dynamic",
+                use_container_width=True,
+                key="ed_education"
+            )
+    elif isinstance(edited.get("education"), str):
+        edited["education"] = st.text_area("Ausbildung (education)", value=edited.get("education", ""), height=120, key="education_text")
+
+    # Навыки (list[str])
+    if isinstance(edited.get("skills"), list):
+        skills_text = ", ".join(map(str, edited.get("skills", [])))
+        skills_text = st.text_area("Fähigkeiten (durch Komma getrennt)", value=skills_text, height=80, key="skills_text")
+        edited["skills"] = [s.strip() for s in skills_text.split(",") if s.strip()]
+
+    # Языки (list[dict])
+    if isinstance(edited.get("languages"), list):
+        with st.expander("Sprachen (languages)", expanded=False):
+            edited["languages"] = st.data_editor(
+                edited["languages"],
+                num_rows="dynamic",
+                use_container_width=True,
+                key="ed_languages"
+            )
+
+    # Домены (list[str])
+    if isinstance(edited.get("domains"), list):
+        domains_text = ", ".join(map(str, edited.get("domains", [])))
+        domains_text = st.text_area("Domänen (durch Komma getrennt)", value=domains_text, height=80, key="domains_text")
+        edited["domains"] = [s.strip() for s in domains_text.split(",") if s.strip()]
+
+    # Hard skills (dict[str, list[str]])
+    if isinstance(edited.get("hard_skills"), dict):
+        with st.expander("Hard Skills (nach Kategorien)", expanded=False):
+            hs = dict(edited.get("hard_skills", {}))
+            for cat, tools in hs.items():
+                tools_list = []
+                if isinstance(tools, list):
+                    tools_list = [str(t) for t in tools]
+                elif isinstance(tools, str):
+                    tools_list = [t.strip() for t in tools.split(",") if t.strip()]
+                tools_text = ", ".join(tools_list)
+                new_text = st.text_area(f"{cat}", value=tools_text, height=60, key=f"hs_{cat}")
+                hs[cat] = [t.strip() for t in new_text.split(",") if t.strip()]
+            edited["hard_skills"] = hs
+
+    # Skills overview (list[dict])
+    if isinstance(edited.get("skills_overview"), list):
+        with st.expander("Skills-Übersicht", expanded=False):
+            edited["skills_overview"] = st.data_editor(
+                edited["skills_overview"],
+                num_rows="dynamic",
+                use_container_width=True,
+                key="ed_skills_overview"
+            )
+
+    # Резервный редактор всего JSON (на случай редких полей)
+    with st.expander("Erweiterter JSON-Editor", expanded=False):
+        raw_json_text = st.text_area(
+            "JSON (vollständig)",
+            value=json.dumps(edited, ensure_ascii=False, indent=2),
+            height=240,
+            key="raw_json_editor"
+        )
+        if st.button("Änderungen aus JSON übernehmen", key="apply_raw_json"):
+            try:
+                edited = json.loads(raw_json_text)
+                st.success("JSON übernommen")
+            except Exception as e:
+                st.error(f"JSON-Parsing-Fehler: {e}")
+
+    # Кнопки управления
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("💾 Änderungen speichern", key="save_changes"):
+            # Нормализуем должность → title
+            if not edited.get("title"):
+                edited["title"] = edited.get("position") or edited.get("role") or ""
+            st.session_state["filled_json"] = edited
+            st.session_state["json_bytes"] = json.dumps(edited, indent=2, ensure_ascii=False).encode("utf-8")
+            st.success("Änderungen gespeichert")
+    with col2:
+        if st.button("🔄 PDF mit aktualisierten Daten erzeugen", key="regen_pdf"):
+            # Пересборка имени файла по обновленным данным
+            full_name = edited.get("full_name", "").strip()
+            position = (
+                edited.get("title")
+                or edited.get("position")
+                or edited.get("role")
+                or ""
+            ).strip()
+            first_name = full_name.split(" ")[0].title() if full_name else "Unbekannt"
+            position_t = position.title() if position else "Unbekannte Position"
+            pdf_name_new = f"CV Inpro {first_name} {position_t}"
+
+            output_dir = "data_output"
+            os.makedirs(output_dir, exist_ok=True)
+            pdf_path_new = create_pretty_first_section(edited, output_dir=output_dir, prefix=pdf_name_new)
+            with open(pdf_path_new, "rb") as f:
+                st.session_state["pdf_bytes"] = f.read()
+            st.session_state["pdf_name"] = pdf_name_new
+            st.success("PDF aktualisiert")
+
     st.markdown("---")
     st.subheader("⬇️ Ergebnisse herunterladen")
 
