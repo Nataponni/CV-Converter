@@ -215,6 +215,12 @@ TEXT:
     with open(os.path.join(cache_dir, "prepared_text.txt"), "w", encoding="utf-8") as f:
         f.write(final_text)
 
+    # Лёгкая функция очистки для raw_text
+    raw_text = re.sub(r"[^\w\s\.\-/–—:,]", " ", raw_text)
+    raw_text = re.sub(r"\s{3,}", "\n", raw_text)
+    raw_text = re.sub(r"[ \t]+", " ", raw_text)
+    raw_text = re.sub(r"\n{2,}", "\n", raw_text)
+
     return final_text, raw_text
 
 

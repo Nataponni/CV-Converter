@@ -237,10 +237,8 @@ def safe_json_parse(raw):
 
 def run_robust_cv_parsing(text: str, model="gpt-5-mini") -> dict:
     """
-    Stabiler GPT-Aufruf mit Fallback-Logik:
-    1. Versuche zuerst structure → details
-    2. Wenn details fehlschlägt → fix
-    3. Wenn alles fehlschlägt → Mono-Aufruf (einzelner Schritt)
+    Stabiler GPT-Aufruf im bisherigen Ein-Schritt-Modus.
+    Оставлен для обратной совместимости. Новый пайплайн использует специализированные функции ниже.
     """
     try:
         result = ask_chatgpt(text, model)
@@ -256,11 +254,165 @@ def run_robust_cv_parsing(text: str, model="gpt-5-mini") -> dict:
             "json": parsed,
             "raw_response": raw_response,
         }
-
     except Exception as e:
         logging.error(f"❌ Parsing failed: {e}")
         return {"success": False, "json": {}, "raw_response": ""}
-    
+
+# ============================================================
+
+def _call_gpt_and_parse(prompt: str, model: str = "gpt-5-mini") -> dict:
+    """Один GPT-вызов + безопасный разбор JSON (общий хелпер для JSON-ответов)."""
+    try:
+        messages = [
+            {"role": "system", "content": "You are an expert CV parser."},
+            {"role": "user", "content": prompt},
+        ]
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+        )
+        raw = response.choices[0].message.content or ""
+        parsed = safe_parse_if_str(raw)
+        return {"success": True, "json": parsed, "raw_response": raw}
+    except Exception as e:
+        logging.error(f"❌ GPT step failed: {e}")
+        return {"success": False, "json": {}, "raw_response": ""}
+
+
+def gpt_extract_cv_without_projects(text: str, model: str = "gpt-5-mini") -> dict:
+    """Извлекает все поля CV, кроме projects_experience (он остаётся [])."""
+    prompt = f"""
+TASK: Extract a structured CV JSON from the text, but DO NOT extract any projects.
+
+INSTRUCTIONS:
+- Use the SCHEMA exactly as given.
+- Fill all fields EXCEPT `projects_experience`.
+- `projects_experience` MUST be an empty list [] in the final JSON.
+- If a field is unknown, use empty values: "" for strings, [] for lists, {{}} for objects.
+- Return ONLY raw JSON, no explanations.
+
+SCHEMA:
+{{
+  "full_name": "",
+  "title": "",
+  "education": "",
+  "languages": [{{"language": "", "level": ""}}],
+  "domains": [],
+  "profile_summary": "",
+  "hard_skills": {{
+    "programming_languages": [],
+    "backend": [],
+    "frontend": [],
+    "databases": [],
+    "data_engineering": [],
+    "etl_tools": [],
+    "bi_tools": [],
+    "analytics": [],
+    "cloud_platforms": [],
+    "devops_iac": [],
+    "ci_cd_tools": [],
+    "containers_orchestration": [],
+    "monitoring_security": [],
+    "security": [],
+    "ai_ml_tools": [],
+    "infrastructure_os": [],
+    "other_tools": []
+  }},
+  "projects_experience": [],
+  "skills_overview": [{{
+    "category": "",
+    "tools": [],
+    "years_of_experience": ""
+  }}],
+  "website": ""
+}}
+
+TEXT:
+{text}
+"""
+    return _call_gpt_and_parse(prompt, model=model)
+
+
+def gpt_extract_projects_text(text: str, model: str = "gpt-5-mini") -> dict:
+    """Возвращает один большой текст с проектами, размеченный === PROJECT N ===."""
+    prompt = f"""
+TASK: Extract ONLY project sections from the following CV text.
+
+INSTRUCTIONS:
+- A project is a block describing work for a client, product or role, with responsibilities and usually a duration.
+- Read the entire CV and isolate each distinct project.
+- For each project, output in the following format:
+
+=== PROJECT N ===
+<raw text of the project, exactly as in the CV, with useful line breaks>
+
+- Use consecutive numbers starting from 1.
+- Keep the original ordering of projects.
+- Do NOT include non-project sections (profile, skills, education, languages, etc.).
+- Return ONLY plain text, no JSON, no markdown.
+
+CV_TEXT:
+{text}
+"""
+    try:
+        messages = [
+            {"role": "system", "content": "You are an expert CV parser."},
+            {"role": "user", "content": prompt},
+        ]
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+        )
+        raw = response.choices[0].message.content or ""
+        return {"success": True, "text": raw, "raw_response": raw}
+    except Exception as e:
+        logging.error(f"❌ GPT projects-text step failed: {e}")
+        return {"success": False, "text": "", "raw_response": ""}
+
+
+def gpt_structurize_projects_from_text(projects_text: str, model: str = "gpt-5-mini") -> dict:
+    """Преобразует текст с === PROJECT N === в поле `projects_experience` целевой схемы."""
+    prompt = f"""
+TASK: Convert the following PROJECTS text into structured JSON objects.
+
+INPUT FORMAT:
+- The text contains multiple project blocks, each starting with a delimiter line:
+
+=== PROJECT 1 ===
+<raw project text>
+
+=== PROJECT 2 ===
+<raw project text>
+...
+
+PROJECT_SCHEMA:
+{{
+  "project_title": "",
+  "overview": "",
+  "role": "",
+  "duration": "",
+  "responsibilities": [],
+  "tech_stack": []
+}}
+
+INSTRUCTIONS:
+- For each input project, produce one object following PROJECT_SCHEMA.
+- Extract:
+  - exact project_title (short, descriptive)
+  - a concise overview (2–3 sentences)
+  - role (e.g., "Lead BI Developer", "Data Engineer")
+  - duration exactly as written in the text
+  - responsibilities as bullet-style strings (start with action verbs, max 18 words)
+  - tech_stack as a flat list of tools/technologies.
+- If any field is missing in the text, leave it as an empty string or empty list.
+- Return ONLY JSON of the form {{"projects_experience": [PROJECT_SCHEMA, ...]}}.
+
+PROJECTS_TEXT:
+{projects_text}
+"""
+    return _call_gpt_and_parse(prompt, model=model)
+
+
 # ============================================================
 # 🧪 Lokaler Testlauf
 # ============================================================
