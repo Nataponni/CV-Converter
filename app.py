@@ -313,42 +313,43 @@ if "filled_json" in st.session_state:
                 st.error(f"JSON-Parsing-Fehler: {e}")
 
     # Кнопки управления
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("💾 Änderungen speichern", key="save_changes"):
-            # Нормализуем должность → title
-            if not edited.get("title"):
-                edited["title"] = edited.get("position") or edited.get("role") or ""
-            # Удаляем полностью пустые записи языков, если остались
-            if isinstance(edited.get("languages"), list):
-                edited["languages"] = [
-                    r for r in edited["languages"]
-                    if isinstance(r, dict) and (str(r.get("language", "")).strip() or str(r.get("level", "")).strip())
-                ]
-            st.session_state["filled_json"] = edited
-            st.session_state["json_bytes"] = json.dumps(edited, indent=2, ensure_ascii=False).encode("utf-8")
-            st.success("Änderungen gespeichert")
-    with col2:
-        if st.button("🔄 PDF mit aktualisierten Daten erzeugen", key="regen_pdf"):
-            # Пересборка имени файла по обновленным данным
-            full_name = edited.get("full_name", "").strip()
-            position = (
-                edited.get("title")
-                or edited.get("position")
-                or edited.get("role")
-                or ""
-            ).strip()
-            first_name = full_name.split(" ")[0].title() if full_name else "Unbekannt"
-            position_t = position.title() if position else "Unbekannte Position"
-            pdf_name_new = f"CV Inpro {first_name} {position_t}"
+    if st.button("💾 Änderungen speichern & PDF erzeugen", key="save_and_regen"):
+        # 1) логика сохранения JSON (как в save_changes)
+        if not edited.get("title"):
+            edited["title"] = edited.get("position") or edited.get("role") or ""
+        if isinstance(edited.get("languages"), list):
+            edited["languages"] = [
+                r for r in edited["languages"]
+                if isinstance(r, dict)
+                and (str(r.get("language", "")).strip() or str(r.get("level", "")).strip())
+            ]
+        st.session_state["filled_json"] = edited
+        st.session_state["json_bytes"] = json.dumps(
+            edited, indent=2, ensure_ascii=False
+        ).encode("utf-8")
 
-            output_dir = "data_output"
-            os.makedirs(output_dir, exist_ok=True)
-            pdf_path_new = create_pretty_first_section(edited, output_dir=output_dir, prefix=pdf_name_new)
-            with open(pdf_path_new, "rb") as f:
-                st.session_state["pdf_bytes"] = f.read()
-            st.session_state["pdf_name"] = pdf_name_new
-            st.success("PDF aktualisiert")
+        # 2) логика генерации PDF (как в regen_pdf)
+        full_name = edited.get("full_name", "").strip()
+        position = (
+            edited.get("title")
+            or edited.get("position")
+            or edited.get("role")
+            or ""
+        ).strip()
+        first_name = full_name.split(" ")[0].title() if full_name else "Unbekannt"
+        position_t = position.title() if position else "Unbekannte Position"
+        pdf_name_new = f"CV Inpro {first_name} {position_t}"
+
+        output_dir = "data_output"
+        os.makedirs(output_dir, exist_ok=True)
+        pdf_path_new = create_pretty_first_section(
+            edited, output_dir=output_dir, prefix=pdf_name_new
+        )
+        with open(pdf_path_new, "rb") as f:
+            st.session_state["pdf_bytes"] = f.read()
+        st.session_state["pdf_name"] = pdf_name_new
+
+        st.success("Änderungen gespeichert und PDF aktualisiert")
 
     st.markdown("---")
     st.subheader("⬇️ Ergebnisse herunterladen")

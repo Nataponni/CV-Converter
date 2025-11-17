@@ -184,8 +184,8 @@ TEXT:
     try:
         response = client.chat.completions.create(
             model=model,
-            messages=messages,
-        )
+            messages=messages
+)
         raw = response.choices[0].message.content
         return {"raw_response": raw, "mode": mode, "prompt": prompt}
 
@@ -269,7 +269,7 @@ def _call_gpt_and_parse(prompt: str, model: str = "gpt-5-mini") -> dict:
         ]
         response = client.chat.completions.create(
             model=model,
-            messages=messages,
+            messages=messages
         )
         raw = response.choices[0].message.content or ""
         parsed = safe_parse_if_str(raw)
@@ -361,7 +361,7 @@ CV_TEXT:
         ]
         response = client.chat.completions.create(
             model=model,
-            messages=messages,
+            messages=messages
         )
         raw = response.choices[0].message.content or ""
         return {"success": True, "text": raw, "raw_response": raw}
@@ -370,7 +370,7 @@ CV_TEXT:
         return {"success": False, "text": "", "raw_response": ""}
 
 
-def gpt_structurize_projects_from_text(projects_text: str, model: str = "gpt-5-mini") -> dict:
+def gpt_structurize_projects_from_text(projects_text: str, model: str = "gpt-5") -> dict:
     """Преобразует текст с === PROJECT N === в поле `projects_experience` целевой схемы."""
     prompt = f"""
 TASK: Convert the following PROJECTS text into structured JSON objects.
@@ -386,7 +386,7 @@ INPUT FORMAT:
 ...
 
 PROJECT_SCHEMA:
-{{
+{{ 
   "project_title": "",
   "overview": "",
   "role": "",
@@ -405,7 +405,7 @@ INSTRUCTIONS:
   - responsibilities as bullet-style strings (start with action verbs, max 18 words)
   - tech_stack as a flat list of tools/technologies.
 - If any field is missing in the text, leave it as an empty string or empty list.
-- Return ONLY JSON of the form {{"projects_experience": [PROJECT_SCHEMA, ...]}}.
+- Return ONLY JSON of the form {{ "projects_experience": [PROJECT_SCHEMA, ...]}}.
 
 PROJECTS_TEXT:
 {projects_text}

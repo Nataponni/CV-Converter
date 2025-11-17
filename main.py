@@ -111,41 +111,12 @@ def main():
             except Exception:
                 filled_json[key] = []
 
-    # 8️⃣ Автозаполнение ролей и дат (если GPT пропустил)
-    for project in filled_json.get("projects_experience", []):
-        title = project.get("project_title", "") or ""  # ← вынесено наружу
-        overview = project.get("overview", "") or ""
+    # 8️⃣ Автозаполнение ролей и дат перенесено в постпроцессинг.
+    # Здесь намеренно НЕ подставляем роль по умолчанию (например, "Consultant")
+    # и НЕ копируем duration из других проектов.
+    # Все такие догадки теперь делает (или НЕ делает) только постпроцессор
+    # на основе собственного текста каждого проекта.
 
-        # --- Role recovery ---
-        if not project.get("role"):
-            import re
-            match = re.search(
-                r"\b(Developer|Engineer|Architect|Consultant|Manager|Lead|Analyst|Director|Specialist)\b",
-                title,
-                re.I,
-            )
-            if match:
-                project["role"] = match.group(1)
-            else:
-                project["role"] = "Consultant"
-
-        # --- Duration recovery ---
-        if not project.get("duration"):
-            import re
-            date_match = re.search(
-                r"(\d{1,2}\.\d{2})\s*[–-]\s*(Jetzt|Heute|Present|\d{1,2}\.\d{2})",
-                title + " " + overview,
-            )
-            if date_match:
-                start, end = date_match.groups()
-                project["duration"] = f"{start} – {end}"
-            else:
-                prev = next(
-                    (p for p in filled_json.get("projects_experience", []) if p.get("duration")),
-                    None,
-                )
-                project["duration"] = prev["duration"] if prev else "Unspecified"
-                
     # 👇 Auf offene Datumsbereiche prüfen (z. B. „bis heute“)
     filled_json = fix_open_date_ranges(filled_json)
 
