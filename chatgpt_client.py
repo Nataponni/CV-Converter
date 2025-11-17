@@ -397,12 +397,17 @@ PROJECT_SCHEMA:
 
 INSTRUCTIONS:
 - For each input project, produce one object following PROJECT_SCHEMA.
+- If the original project text is not in English (e.g. German), TRANSLATE all textual fields
+  (project_title, overview, role, responsibilities, tech_stack items) to natural English.
+- Preserve the meaning and level of technical detail when translating.
+- Normalize duration to English format "MMM YYYY – MMM YYYY" or "MMM YYYY – Present".
+- Clean any OCR noise or stray characters (e.g., "Jan 2023 nJetzt -" → "Jan 2023 – Present").
 - Extract:
-  - exact project_title (short, descriptive)
-  - a concise overview (2–3 sentences)
-  - role (e.g., "Lead BI Developer", "Data Engineer")
+  - project_title in English (short, descriptive)
+  - a concise overview in English (2–3 sentences)
+  - role in English (e.g., "Lead BI Developer", "Data Engineer")
   - duration exactly as written in the text
-  - responsibilities as bullet-style strings (start with action verbs, max 18 words)
+  - responsibilities as English bullet-style strings (start with action verbs, max 18 words)
   - tech_stack as a flat list of tools/technologies.
 - If any field is missing in the text, leave it as an empty string or empty list.
 - Return ONLY JSON of the form {{ "projects_experience": [PROJECT_SCHEMA, ...]}}.

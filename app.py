@@ -290,8 +290,12 @@ if "filled_json" in st.session_state:
     # Skills overview (list[dict])
     if isinstance(edited.get("skills_overview"), list):
         with st.expander("Skills-Übersicht", expanded=False):
+            rows = edited.get("skills_overview", [])
+            # шаблон строки, чтобы редактор был редактируемым даже при пустом списке
+            if not rows:
+                rows = [{"category": "", "tools": [], "years_of_experience": ""}]
             edited["skills_overview"] = st.data_editor(
-                edited["skills_overview"],
+                rows,
                 num_rows="dynamic",
                 use_container_width=True,
                 key="ed_skills_overview"
