@@ -36,7 +36,7 @@ def main():
 
     # 2️⃣ GPT: извлечение только проектного текста (TEXT 2)
     logging.info("🧠 GPT-Schritt 1b: Extrahiere reinen Projekttext...")
-    projects_text_result = gpt_extract_projects_text(raw_text)
+    projects_text_result = gpt_extract_projects_text(prepared_text)
     if not projects_text_result.get("success"):
         logging.error("❌ GPT (Projekt-Text) hat keine gültige Antwort geliefert.")
         return
@@ -48,7 +48,7 @@ def main():
 
     # 3️⃣ GPT-Schritt 2: CV ohne Projekte (Schema 1 aus TEXT 1)
     logging.info("🧠 GPT-Schritt 2: Extrahiere CV ohne Projekte...")
-    base_result = gpt_extract_cv_without_projects(raw_text)
+    base_result = gpt_extract_cv_without_projects(prepared_text)
     if not base_result.get("success"):
         logging.error("❌ GPT (Schema ohne Projekte) hat keine gültige Antwort geliefert.")
         return
