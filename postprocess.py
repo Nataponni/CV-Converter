@@ -207,7 +207,7 @@ def split_skills_overview_rows(skills):
         if not isinstance(row, dict):
             continue
 
-        category = row.get("category", "").strip()
+        category = str(row.get("category", "")).strip()
         tools = row.get("tools", [])
 
         # 🧠 Нормализуем: если строка — разбиваем, если список — оставляем
@@ -218,8 +218,9 @@ def split_skills_overview_rows(skills):
         else:
             tools_list = []
 
-        years = row.get("years_of_experience", "").strip()
-
+        years_raw = row.get("years_of_experience", "")
+        years = str(years_raw).strip() if years_raw is not None else ""
+        
         for tool in tools_list:
             result.append({
                 "category": category,
@@ -268,9 +269,10 @@ def filter_skills_overview(skills):
         tools = item.get("tools", [])
         years = item.get("years_of_experience", "").strip()
 
-        # Удаляем дубликаты и "0 лет"
-        if years in ["0", "0 years", ""]:
+        # Удаляем только мусор: без категории или без инструментов
+        if not category or not tools:
             continue
+
         key = (category, tuple(sorted(tools)))
         if key not in seen:
             seen.add(key)

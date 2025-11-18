@@ -50,6 +50,7 @@ def tag_dates(text: str) -> str:
     for pattern in patterns:
         text = re.sub(pattern, lambda m: f"[DATE]{m.group(0)}[/DATE]", text, flags=re.IGNORECASE)
 
+    text = re.sub(r"\bn(Jetzt|Heute)\b", r"\1", text, flags=re.IGNORECASE)
     text = re.sub(r"\b(Jetzt|Derzeit|Aktuell|Heute)\b", "Present", text, flags=re.IGNORECASE)
     return text
 
@@ -204,8 +205,9 @@ TEXT:
 
     cleaned_text = clean_text(tagged_text)
 
-    normalized_text = normalize_structure(cleaned_text)
-
+    # normalized_text = normalize_structure(cleaned_text)
+    normalized_text = cleaned_text
+    
     final_text = (
         "[CV_START]\n"
         "The following is a professional CV. Detect all project durations accurately.\n"

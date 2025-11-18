@@ -2,6 +2,7 @@ import os
 import json
 import time
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pdf_processor import prepare_cv_text
 from postprocess import postprocess_filled_cv, fix_open_date_ranges, safe_parse_if_str
 from chatgpt_client import (
@@ -34,11 +35,21 @@ def main():
     with open(schema1_text_path, "w", encoding="utf-8") as f:
         f.write(prepared_text)
 
-    # 2️⃣ GPT: извлечение только проектного текста (TEXT 2)
-    logging.info("🧠 GPT-Schritt 1b: Extrahiere reinen Projekttext...")
-    projects_text_result = gpt_extract_projects_text(prepared_text)
+     # 2️⃣ + 3️⃣ GPT: Projekte-Text und CV ohne Projekte — параллельно
+    logging.info("🧠 Starte parallele GPT-Schritte: Projekt-Text & CV ohne Projekte...")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        fut_projects_text = executor.submit(gpt_extract_projects_text, prepared_text)
+        fut_base_cv = executor.submit(gpt_extract_cv_without_projects, prepared_text)
+
+        projects_text_result = fut_projects_text.result()
+        base_result = fut_base_cv.result()
+
     if not projects_text_result.get("success"):
         logging.error("❌ GPT (Projekt-Text) hat keine gültige Antwort geliefert.")
+        return
+    if not base_result.get("success"):
+        logging.error("❌ GPT (Schema ohne Projekte) hat keine gültige Antwort geliefert.")
         return
 
     projects_text = projects_text_result.get("text", "") or ""
@@ -46,12 +57,6 @@ def main():
     with open(projects_raw_txt_path, "w", encoding="utf-8") as f:
         f.write(projects_text)
 
-    # 3️⃣ GPT-Schritt 2: CV ohne Projekte (Schema 1 aus TEXT 1)
-    logging.info("🧠 GPT-Schritt 2: Extrahiere CV ohne Projekte...")
-    base_result = gpt_extract_cv_without_projects(prepared_text)
-    if not base_result.get("success"):
-        logging.error("❌ GPT (Schema ohne Projekte) hat keine gültige Antwort geliefert.")
-        return
     base_cv = base_result.get("json", {}) or {}
 
     # 🔹 Сохраняем Schema 1 как JSON
