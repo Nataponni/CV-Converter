@@ -1,12 +1,12 @@
 # CV-Converter
 
-## 🎯 Beschreibung
+## Beschreibung
 Ein Tool zur Extraktion von Text aus PDF-Lebensläufen und zur Umwandlung in strukturiertes JSON mithilfe der **ChatGPT API**.  
 Das JSON folgt einem vordefinierten Schema und kann zur Befüllung von Standard-CV-Templates verwendet werden.
 
 ---
 
-## 📁 Projektstruktur
+## Projektstruktur
 
 ```
 
@@ -142,3 +142,5 @@ Daher in `.gitignore` eintragen:
 * Das Schema entspricht den Standard-CV-Templates
 
 ```
+
+

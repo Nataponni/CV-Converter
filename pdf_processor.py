@@ -195,8 +195,12 @@ TEXT:
         raw_text = re.sub(r"(?i)\b(berufserfahrung|erfahrung|projekte|projects?)\b", "Experience", raw_text)
         raw_text = re.sub(r"(?i)\b(kenntnisse|skills|kompetenzen|technologien|tools)\b", "Skills", raw_text)
 
-    tagged_text = tag_dates(raw_text)
+    # Skip date tagging as per user request
+    tagged_text = raw_text
     tagged_text = merge_project_blocks(tagged_text)
+    
+    # Remove any existing date tags
+    tagged_text = re.sub(r'\[DATE\]|\[/DATE\]', '', tagged_text)
 
     tagged_text = re.sub(r"[^\w\s\.\-/–—:,]", " ", tagged_text) 
     tagged_text = re.sub(r"\s{3,}", "\n", tagged_text)

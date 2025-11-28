@@ -8,7 +8,6 @@ data_output/
 *.pdf
 *.txt
 debug/
-README.md
 
 # Разрешаем папку fonts/
 !fonts/
