@@ -1,11 +1,10 @@
 import os
-import re
 import json
 import ast
 import logging
 from dotenv import load_dotenv
 from openai import OpenAI
-from postprocess import safe_parse_if_str, postprocess_filled_cv
+from postprocess import safe_parse_if_str
 
 # ============================================================
 # 🔧 Initialisierung
@@ -192,19 +191,9 @@ TEXT:
     except Exception as e:
         logging.error(f"❌ GPT error: {e}")
         return {"raw_response": "", "error": str(e)}
-
 # ============================================================
-# 🔄 Wrapper-Funktionen
+#  
 # ============================================================
-def extract_structure_with_gpt(text: str) -> dict:
-    return ask_chatgpt(text, mode="structure")
-
-def extract_details_with_gpt(text: str, structure: dict) -> dict:
-    return ask_chatgpt(text, mode="details", base_structure=structure)
-
-def auto_fix_missing_fields(data: dict) -> dict:
-    text = json.dumps(data, ensure_ascii=False, indent=2)
-    return ask_chatgpt(text, mode="fix")
 
 def safe_json_parse(raw):
     """
@@ -234,29 +223,6 @@ def safe_json_parse(raw):
         except Exception as e:
             logging.warning(f"⚠️ safe_json_parse failed: {e}")
             return {}
-
-def run_robust_cv_parsing(text: str, model="gpt-5-mini") -> dict:
-    """
-    Stabiler GPT-Aufruf im bisherigen Ein-Schritt-Modus.
-    Оставлен для обратной совместимости. Новый пайплайн использует специализированные функции ниже.
-    """
-    try:
-        result = ask_chatgpt(text, model)
-        raw_response = result.get("raw_response", "")
-        parsed = safe_parse_if_str(raw_response)
-
-        parsed["projects_experience"] = safe_parse_if_str(parsed.get("projects_experience"))
-        parsed["skills_overview"] = safe_parse_if_str(parsed.get("skills_overview"))
-        parsed["languages"] = safe_parse_if_str(parsed.get("languages"))
-
-        return {
-            "success": True,
-            "json": parsed,
-            "raw_response": raw_response,
-        }
-    except Exception as e:
-        logging.error(f"❌ Parsing failed: {e}")
-        return {"success": False, "json": {}, "raw_response": ""}
 
 # ============================================================
 
@@ -437,7 +403,7 @@ CV_TEXT:
         return {"success": False, "text": "", "raw_response": ""}
 
 
-def gpt_structurize_projects_from_text(projects_text: str, model: str = "gpt-5") -> dict:
+def gpt_structurize_projects_from_text(projects_text: str, model: str = "gpt-5-mini") -> dict:
     """Преобразует текст с === PROJECT N === в поле `projects_experience` целевой схемы."""
     prompt = f"""
 TASK: Convert the following PROJECTS text into structured JSON objects.
@@ -484,58 +450,126 @@ PROJECTS_TEXT:
 """
     return _call_gpt_and_parse(prompt, model=model)
 
-
-# ============================================================
-# 🧪 Lokaler Testlauf
-# ============================================================
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    input_path = "debug/full_prepared_text.txt"
-    output_path = "debug/filled_cv_from_gpt.json"
-
-    if not os.path.exists(input_path):
-        logging.warning(f"⚠️ File not found: {input_path}")
-        exit(1)
-
-    with open(input_path, "r", encoding="utf-8") as f:
-        input_text = f.read()
-
-    logging.info("📨 Sending text to GPT (mode='details')...")
-    structure_raw = ask_chatgpt(input_text, mode="structure")
+def run_stage_based_parsing(text: str, model: str = "gpt-5-mini") -> dict:
+    """
+    Stage-based pipeline:
+    1. Extract general CV info without projects
+    2. Extract raw text for relevant projects
+    3. Structurize the extracted project text into JSON
+    4. Merge into one final result JSON
+    """
 
     try:
-        base_structure = json.loads(structure_raw["raw_response"])
-    except Exception:
-        base_structure = None
+        # Шаг 1: без проектов
+        step1 = gpt_extract_cv_without_projects(text, model=model)
+        if not step1.get("success"):
+            return {"success": False, "error": "Step 1 failed: general CV info"}
 
-    result = ask_chatgpt(input_text, mode="details", base_structure=base_structure)
+        # Шаг 2: получить текст проектов
+        step2 = gpt_extract_projects_text(text, model=model)
+        if not step2.get("success"):
+            return {"success": False, "error": "Step 2 failed: projects text"}
 
-    if "raw_response" in result:
-        try:
-            print("\nSTEP 1️⃣  RAW GPT RESPONSE:\n", result.get("raw_response")[:2000])
-            filled_json = safe_json_parse(result["raw_response"])
-            print("\nSTEP 2️⃣  AFTER safe_json_parse:\n", type(filled_json.get("projects_experience")), len(str(filled_json.get("projects_experience"))))
+        # Шаг 3: превратить текст проектов в структуру
+        step3 = gpt_structurize_projects_from_text(step2["text"], model=model)
+        if not step3.get("success"):
+            return {"success": False, "error": "Step 3 failed: project structuring"}
 
-            with open("debug/full_prepared_text.txt", "r", encoding="utf-8") as f:
-                raw_text = f.read()
+        # Объединение
+        result_json = step1["json"]
+        result_json["projects_experience"] = step3["json"].get("projects_experience", [])
 
-            filled_json["projects_experience"] = safe_parse_if_str(filled_json.get("projects_experience"))
-            print("\nSTEP 3️⃣  AFTER safe_parse_if_str:\n", type(filled_json.get("projects_experience")), len(filled_json.get("projects_experience", [])))
+        return {
+            "success": True,
+            "json": result_json,
+            "raw_projects_text": step2["text"]
+        }
 
-            filled_json["skills_overview"] = safe_parse_if_str(filled_json.get("skills_overview"))
+    except Exception as e:
+        logging.error(f"❌ Stage-based parsing pipeline failed: {e}")
+        return {"success": False, "error": str(e)}
 
-            filled_json = postprocess_filled_cv(filled_json, raw_text)
-            print("\nSTEP 3️⃣  AFTER safe_parse_if_str:\n", type(filled_json.get("projects_experience")), len(filled_json.get("projects_experience", [])))
-            
-            with open(output_path, "w", encoding="utf-8") as out_f:
-                json.dump(filled_json, out_f, indent=2, ensure_ascii=False)
+def gpt_generate_text_cv_summary(text: str, model: str = "gpt-5-mini") -> dict:
+    """
+    Generates a concise CV summary including:
+    - Relevant Experience (2–5 key projects, 170–180 words total)
+    - Expertise bullets (3–5 items, 30–32 words per bullet)
+    - Why Me section (~40 words)
+    Output is plain text. No JSON. No explanations.
+    """
 
-            logging.info(f"✅ Результат сохранён: {output_path}")
+    prompt = f"""
+TASK: Generate a plain-text CV summary from the structured resume data below.
 
-        except json.JSONDecodeError as e:
-            logging.error("❌ JSON parsing error:")
-            logging.error(e)
-            logging.warning("⚠️ GPT response:")
-            print(result["raw_response"])
-    else:
-        logging.error("❌ GPT did not return a valid response.")
+OUTPUT STRUCTURE:
+
+--- RELEVANT EXPERIENCE ---
+• Include exactly 2–5 projects from 'projects_experience'. No more, no less.
+• Only use content from the structured 'projects_experience' field. Do not invent or summarize from other sections.
+• Limit total section length to 170–180 words and 1200–1300 characters (including spaces).
+• Each bullet must describe one project only: include title, duration, 1–2 key results (max 18 words each), and 2–3 main technologies.
+• Do not merge multiple projects into one bullet.
+• If several projects share the same date range (e.g., May 2020 – Aug 2025), group them under that date in parentheses. Then list each project as a separate bullet below. This avoids repeating the same date in each line.
+• Prioritize the most relevant and unique projects. Avoid duplicates or similar entries. Focus on business value and diversity of experience (e.g., platforms, automation, observability, security).
+• Ignore unimportant, redundant, or overlapping projects.
+
+--- EXPERTISE ---
+• Write 3–5 bullet points.
+• Each bullet should be 28–30 words (230–250 characters including spaces).
+• Focus on unique technical strengths and relevant experience (e.g., "6+ years with Terraform", "Strong CI/CD background in FinTech").
+• Each point must start with a measurable or domain-relevant phrase, such as:
+   - “6+ years with Python and SQL”
+   - “Strong CI/CD delivery in FinTech”
+   - “Hands-on MLOps with Azure DevOps and MLflow”
+• Use this format consistently across all points.
+• Avoid vague summaries — favor specific skills, years, or business domains.
+• Each bullet must reflect a unique skillset or perspective, avoiding repetition across bullets.
+
+--- WHY ME ---
+• Write one paragraph of 35–40 words (270–290 characters including spaces).
+• Clearly highlight the candidate’s unique value for the target role.
+• Avoid soft skills or general motivation. Focus on differentiators: technical strengths, domains, scale of delivery, impact.
+
+RULES:
+- Use only structured resume data (especially 'projects_experience').
+- Do NOT invent content or hallucinate skills, tools, or project names.
+- Do NOT copy from unstructured text sections.
+- Output must be plain English with no markdown, no comments, no labels.
+- Style: concise, professional, high-density, no fluff.
+- Output format: only plain text. No comments, no code blocks.
+- Language: English.
+
+FORMATTING:
+- Separate each bullet or paragraph with a single blank line.
+- Return the section headers exactly as written: --- RELEVANT EXPERIENCE ---, --- EXPERTISE ---, --- WHY ME ---.
+- Each project, expertise point, and the WHY ME paragraph must be clearly separated by a blank line for readability.
+
+CV TEXT:
+{text}
+"""
+
+    try:
+        messages = [
+            {"role": "system", "content": "You are a senior CV writer."},
+            {"role": "user", "content": prompt},
+        ]
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages
+        )
+
+        raw = response.choices[0].message.content.strip()
+
+        return {
+            "success": True,
+            "output_text": raw
+        }
+
+    except Exception as e:
+        logging.error(f"❌ GPT summary generation failed: {e}")
+        return {
+            "success": False,
+            "output_text": "",
+            "error": str(e)
+        }

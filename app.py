@@ -13,7 +13,28 @@ st.title("📄 CV-Konverter")
 # 1️⃣ Datei-Upload
 uploaded_file = st.file_uploader("Wähle eine PDF-Datei aus", type=["pdf"])
 
+def is_new_candidate(uploaded_file):
+    if not uploaded_file:
+        return False
+    last_file = st.session_state.get("last_uploaded_file_name", None)
+    return uploaded_file.name != last_file
+
+def clear_candidate_data():
+    keys_to_clear = [
+        "filled_json", "json_bytes", "pdf_bytes", "pdf_name",
+        "raw_text", "pdf_path", "projects_experience",
+        "profile_summary", "v3_summary_text", "v3_summary_area"
+    ]
+    for key in keys_to_clear:
+        st.session_state.pop(key, None)
+
 if uploaded_file:
+    # Очистка всех данных, если загружен новый кандидат
+    if is_new_candidate(uploaded_file):
+        clear_candidate_data()
+        st.session_state["last_uploaded_file_name"] = uploaded_file.name
+
+    # Сохраняем PDF во временный файл
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         pdf_path = tmp.name
@@ -34,6 +55,9 @@ if uploaded_file:
             # --- Schritt 1: Text extrahieren ---
             status_text.text("📖 Text wird extrahiert…")
             prepared_text, raw_text = prepare_cv_text(pdf_path)
+            st.session_state["raw_text"] = raw_text
+            st.session_state["pdf_path"] = pdf_path  # (для восстановления при повторном использовании)
+
             for i in range(1, 26, 2):
                 time.sleep(0.1)
                 progress.progress(i)
@@ -300,6 +324,33 @@ if "filled_json" in st.session_state:
                 use_container_width=True,
                 key="ed_skills_overview"
             )
+
+    # --- V3 Text Summary (optional) ---
+    st.markdown("### 📝 Textbasierte Zusammenfassung")
+    if st.button("Zusammenfassung generieren", key="btn_generate_v3_summary"):
+        with st.spinner("GPT generiert die textbasierte Zusammenfassung…"):
+            from chatgpt_client import gpt_generate_text_cv_summary
+            try:
+                summary_result = gpt_generate_text_cv_summary(
+                    text=st.session_state.get("raw_text", ""),
+                    model="gpt-5-mini"
+                )
+                if summary_result.get("success") and summary_result.get("output_text"):
+                    st.session_state["v3_summary_text"] = summary_result["output_text"]
+                    st.success("Summary erfolgreich erstellt.")
+                else:
+                    st.warning("⚠️ Keine Zusammenfassung erhalten.")
+            except Exception as e:
+                st.error(f"Fehler bei der Generierung: {e}")
+
+    if "v3_summary_text" in st.session_state:
+        st.text_area(
+            "📄 Zusammenfassung (nur Text)",
+            value=st.session_state["v3_summary_text"],
+            height=300,
+            disabled=False,
+            key="v3_summary_area"
+        )
 
     # Резервный редактор всего JSON (на случай редких полей)
     with st.expander("Erweiterter JSON-Editor", expanded=False):
