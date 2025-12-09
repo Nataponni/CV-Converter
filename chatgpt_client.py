@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 # ============================================================
 # 🧠 Hauptfunktion zum Aufruf von GPT
 # ============================================================
-def ask_chatgpt(text, mode="details", base_structure=None, model="gpt-5-mini"):
+def ask_chatgpt(text, mode="details", base_structure=None, model="gpt-4o-mini"):
     """
     Универсальная функция вызова GPT для CV-парсинга.
     Поддерживает режимы:
@@ -226,7 +226,7 @@ def safe_json_parse(raw):
 
 # ============================================================
 
-def _call_gpt_and_parse(prompt: str, model: str = "gpt-5-mini") -> dict:
+def _call_gpt_and_parse(prompt: str, model: str = "gpt-4o-mini") -> dict:
     """Один GPT-вызов + безопасный разбор JSON (общий хелпер для JSON-ответов)."""
     try:
         messages = [
@@ -245,7 +245,7 @@ def _call_gpt_and_parse(prompt: str, model: str = "gpt-5-mini") -> dict:
         return {"success": False, "json": {}, "raw_response": ""}
 
 
-def gpt_extract_cv_without_projects(text: str, model: str = "gpt-5-mini") -> dict:
+def gpt_extract_cv_without_projects(text: str, model: str = "gpt-4o-mini") -> dict:
     """Извлекает все поля CV, кроме projects_experience (он остаётся [])."""
     prompt = f"""
 TASK: Extract a structured CV JSON from the text, but DO NOT extract any projects.
@@ -348,7 +348,7 @@ TEXT:
     return _call_gpt_and_parse(prompt, model=model)
 
 
-def gpt_extract_projects_text(text: str, model: str = "gpt-5-mini") -> dict:
+def gpt_extract_projects_text(text: str, model: str = "gpt-4o-mini") -> dict:
     """Возвращает один большой текст с проектами, размеченный === PROJECT N ===."""
     prompt = f"""
 TASK: Extract ONLY project sections from the following CV text.
@@ -403,7 +403,7 @@ CV_TEXT:
         return {"success": False, "text": "", "raw_response": ""}
 
 
-def gpt_structurize_projects_from_text(projects_text: str, model: str = "gpt-5-mini") -> dict:
+def gpt_structurize_projects_from_text(projects_text: str, model: str = "gpt-4o-mini") -> dict:
     """Преобразует текст с === PROJECT N === в поле `projects_experience` целевой схемы."""
     prompt = f"""
 TASK: Convert the following PROJECTS text into structured JSON objects.
@@ -450,7 +450,7 @@ PROJECTS_TEXT:
 """
     return _call_gpt_and_parse(prompt, model=model)
 
-def run_stage_based_parsing(text: str, model: str = "gpt-5-mini") -> dict:
+def run_stage_based_parsing(text: str, model: str = "gpt-4o-mini") -> dict:
     """
     Stage-based pipeline:
     1. Extract general CV info without projects
@@ -489,7 +489,8 @@ def run_stage_based_parsing(text: str, model: str = "gpt-5-mini") -> dict:
         logging.error(f"❌ Stage-based parsing pipeline failed: {e}")
         return {"success": False, "error": str(e)}
 
-def gpt_generate_text_cv_summary(text: str, model: str = "gpt-5-mini") -> dict:
+from typing import Dict, Any
+def gpt_generate_text_cv_summary(cv_data: Dict[str, Any], model: str = "gpt-4o-mini") -> dict:
     """
     Generates a concise CV summary including:
     - Relevant Experience (2–5 key projects, 170–180 words total)
@@ -497,7 +498,8 @@ def gpt_generate_text_cv_summary(text: str, model: str = "gpt-5-mini") -> dict:
     - Why Me section (~40 words)
     Output is plain text. No JSON. No explanations.
     """
-
+  # 1. Преобразуем словарь в строку для промпта
+    structured_data_str = json.dumps(cv_data, ensure_ascii=False, indent=2)
     prompt = f"""
 TASK: Generate a plain-text CV summary from the structured resume data below.
 
@@ -544,14 +546,22 @@ FORMATTING:
 - Return the section headers exactly as written: --- RELEVANT EXPERIENCE ---, --- EXPERTISE ---, --- WHY ME ---.
 - Each project, expertise point, and the WHY ME paragraph must be clearly separated by a blank line for readability.
 
-CV TEXT:
-{text}
+STRUCTURED CV DATA:
+{structured_data_str}
 """
 
     try:
         messages = [
-            {"role": "system", "content": "You are a senior CV writer."},
-            {"role": "user", "content": prompt},
+            {
+                "role": "system",
+                "content": """
+                You are a senior CV writer specialized in technical summaries. 
+                Your ONLY task is to generate the summary following ALL formatting and content rules below.
+                CRITICAL RULES: Use only structured data. Do not invent content. Do not use markdown.
+                """
+            },
+            # Оставьте в prompt только структуру и переменные
+            {"role": "user", "content": prompt}, 
         ]
 
         response = client.chat.completions.create(

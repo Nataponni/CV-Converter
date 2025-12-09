@@ -326,14 +326,16 @@ if "filled_json" in st.session_state:
             )
 
     # --- V3 Text Summary (optional) ---
+    # Получаем данные, которые были сохранены после успешной конвертации
+    cv_data_for_summary = st.session_state.get("filled_json", {}) # Используйте 'filled_json' или тот ключ, где лежат финальные данные
     st.markdown("### 📝 Textbasierte Zusammenfassung")
     if st.button("Zusammenfassung generieren", key="btn_generate_v3_summary"):
         with st.spinner("GPT generiert die textbasierte Zusammenfassung…"):
             from chatgpt_client import gpt_generate_text_cv_summary
             try:
                 summary_result = gpt_generate_text_cv_summary(
-                    text=st.session_state.get("raw_text", ""),
-                    model="gpt-5-mini"
+                    cv_data=cv_data_for_summary,
+                    model="gpt-4o-mini"
                 )
                 if summary_result.get("success") and summary_result.get("output_text"):
                     st.session_state["v3_summary_text"] = summary_result["output_text"]
