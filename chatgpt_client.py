@@ -183,7 +183,8 @@ TEXT:
     try:
         response = client.chat.completions.create(
             model=model,
-            messages=messages
+            messages=messages,
+            temperature=0.1
 )
         raw = response.choices[0].message.content
         return {"raw_response": raw, "mode": mode, "prompt": prompt}
@@ -235,7 +236,8 @@ def _call_gpt_and_parse(prompt: str, model: str = "gpt-4o-mini") -> dict:
         ]
         response = client.chat.completions.create(
             model=model,
-            messages=messages
+            messages=messages,
+            temperature=0.1
         )
         raw = response.choices[0].message.content or ""
         parsed = safe_parse_if_str(raw)
@@ -394,7 +396,8 @@ CV_TEXT:
         ]
         response = client.chat.completions.create(
             model=model,
-            messages=messages
+            messages=messages,
+            temperature=0.1
         )
         raw = response.choices[0].message.content or ""
         return {"success": True, "text": raw, "raw_response": raw}
@@ -566,7 +569,8 @@ STRUCTURED CV DATA:
 
         response = client.chat.completions.create(
             model=model,
-            messages=messages
+            messages=messages,
+            temperature=0.1
         )
 
         raw = response.choices[0].message.content.strip()
