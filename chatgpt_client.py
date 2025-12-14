@@ -112,6 +112,7 @@ In the "projects_experience" field:
   ]
 
 === DOMAINS ===
+<<<<<<< HEAD
 - Determine the candidate’s professional domains based strictly on the business industries of the companies they worked for.
 - Use ONLY employer/client industries that are clearly stated or unambiguously inferable from company names or company sector descriptions (e.g., "bank", "insurance", "telecom provider", "university", "hospital").
 - Do NOT treat areas of work (e.g., AI, Marketing, Sales) as industries unless explicitly stated as the employer’s business sector.
@@ -125,6 +126,12 @@ In the "projects_experience" field:
 - Include ONLY validated industry terms.
 - Ignore any earlier or global instructions that describe "domain" as a technical area, specialization, or skill set.
 - If no employer industry can be clearly identified, return an empty string "".
+=======
+- Determine the candidate’s professional domains based on the industries of the companies they worked in.
+- Domains must represent business sectors or industries (e.g. Banking, Manufacturing, Consulting, Healthcare, E-Commerce).
+- Do NOT use technical skills, tools, or methodologies (e.g. Big Data, Data Engineering, DevOps, Cloud, AI) as domains.
+- If the candidate worked in multiple industries, list all relevant domains as a JSON array of strings.
+>>>>>>> 4e70b863930729f6798e4cc1ad890524f6d71f15
 
 === OUTPUT RULES ===
 - Return a single valid JSON object strictly matching the SCHEMA.
@@ -135,10 +142,16 @@ In the "projects_experience" field:
 - Before returning the final JSON, internally verify:
   * Responsibilities per project contain at least 100 words.
   * No arrays or objects are serialized as strings.
+<<<<<<< HEAD
   * "domains" is a comma-separated string (not an array).
   * All fields strictly match the provided SCHEMA.
 - If any rule is violated, regenerate the output until all constraints are satisfied.
 - Validate each domain term before output: if it is not clearly an industry, exclude it.
+=======
+  * "domains" is a JSON array of strings (not a comma-separated string).
+  * All fields strictly match the provided SCHEMA.
+- If any rule is violated, regenerate the output until all constraints are satisfied.
+>>>>>>> 4e70b863930729f6798e4cc1ad890524f6d71f15
 
 SCHEMA:
 {{
@@ -468,10 +481,10 @@ INSTRUCTIONS:
 - Clean any OCR noise or stray characters (e.g., "Jan 2023 nJetzt -" → "Jan 2023 – Present").
 - Extract:
   - project_title in English (short, descriptive)
-  - a concise overview in English (2–3 sentences)
+  - a comprehensive overview in English (100+ words)
   - role in English (e.g., "Lead BI Developer", "Data Engineer")
   - duration exactly as written in the text
-  - responsibilities as English bullet-style strings (start with action verbs, max 18 words)
+  - responsibilities as detailed English paragraphs (100+ words each), each describing a major responsibility or achievement
   - tech_stack as a flat list of tools/technologies.
 - For each responsibility:
   * Provide detailed context about the task and its business impact
@@ -530,8 +543,8 @@ from typing import Dict, Any
 def gpt_generate_text_cv_summary(cv_data: Dict[str, Any], model: str = "gpt-4o-mini") -> dict:
     """
     Generates a concise CV summary including:
-    - Relevant Experience (2–5 key projects, 170–180 words total)
-    - Expertise bullets (3–5 items, 30–32 words per bullet)
+    - Relevant Experience (2–5 key projects, 170–180 words total, including project titles in headers)
+    - Expertise bullets (3–5 items, 32 words total for all bullets combined)
     - Why Me section (~40 words)
     Output is plain text. No JSON. No explanations.
     """
