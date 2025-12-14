@@ -291,6 +291,96 @@ def safe_parse_if_str(field):
                 return []
     return field
 # ===============================================
+# 🏭 Нормализация доменов / индустрий
+INDUSTRY_KEYWORDS = {
+    # --- Financial ---
+    "bank": "banking",
+    "banking": "banking",
+    "financial": "financial services",
+    "finance": "financial services",
+    "financing": "financial services",
+    "insurance": "insurance",
+    "insurer": "insurance",
+    "wealth": "wealth management",
+    "asset management": "asset management",
+    "investment": "investment management",
+
+    # --- Consulting / Professional Services ---
+    "consult": "consulting",
+    "advisory": "consulting",
+    "professional services": "professional services",
+
+    # --- Telecom / Media ---
+    "telecom": "telecommunications",
+    "telecommunications": "telecommunications",
+    "mobile operator": "telecommunications",
+    "isp": "telecommunications",
+
+    # --- Education ---
+    "university": "education",
+    "school": "education",
+    "college": "education",
+    "kindergarten": "education",
+    "academy": "education",
+    "educational institution": "education",
+
+    # --- Healthcare ---
+    "hospital": "healthcare",
+    "clinic": "healthcare",
+    "medical": "healthcare",
+    "healthcare": "healthcare",
+    "pharma": "pharmaceuticals",
+    "pharmaceutical": "pharmaceuticals",
+
+    # --- Manufacturing / Industry ---
+    "manufacturing": "manufacturing",
+    "factory": "manufacturing",
+    "industrial": "manufacturing",
+    "production": "manufacturing",
+
+    # --- Retail / Commerce ---
+    "retail": "retail",
+    "wholesale": "retail",
+    "store": "retail",
+    "e-commerce": "e-commerce",
+    "ecommerce": "e-commerce",
+    "online shop": "e-commerce",
+    "marketplace": "e-commerce",
+
+    # --- Public / Government ---
+    "government": "public sector",
+    "public sector": "public sector",
+    "municipality": "public sector",
+    "ministry": "public sector",
+
+    # --- IT companies (очень осторожно) ---
+    # добавляются ТОЛЬКО если явно указано как бизнес компании
+    "software company": "software industry",
+    "it company": "software industry",
+    "saas provider": "software industry",
+}
+
+
+def normalize_domains(domains, data):
+    text = json.dumps(data, ensure_ascii=False).lower()
+    result = set()
+
+    # 1️⃣ если GPT дал домены — принимаем ТОЛЬКО если это индустрии
+    if isinstance(domains, list):
+        for d in domains:
+            d_low = d.lower()
+            for industry in INDUSTRY_KEYWORDS.values():
+                if industry in d_low:
+                    result.add(industry)
+
+    # 2️⃣ fallback: ищем по тексту CV / компаниям
+    for key, industry in INDUSTRY_KEYWORDS.items():
+        if key in text:
+            result.add(industry)
+
+    return [d.title() for d in sorted(result)]
+
+# ===============================================
 # 🧩 Основной вызов
 # ===============================================
 
@@ -317,7 +407,8 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
     flat_skills = split_skills_overview_rows(data.get("skills_overview", []))
     reconstructed = generate_skills_overview(flat_skills)
     data["skills_overview"] = filter_skills_overview(reconstructed)
-
+    
+    data["domains"] = normalize_domains(data.get("domains", []), data)
     # 📌 Очистка текста
     data = clean_text_fields(data)
 
@@ -386,7 +477,6 @@ def clean_text_fields(data):
         text = text.replace("\xa0", " ").strip()
         return text
     return data
-
 
 def validate_cv_schema(cv_json):
     """Проверяет, что все ключевые разделы присутствуют."""
