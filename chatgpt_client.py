@@ -37,7 +37,8 @@ TASK: {task_description}
 INSTRUCTIONS:
 
 - Extract a complete, structured JSON strictly following the provided SCHEMA.
-- Detect the candidate’s actual domain (e.g., Cloud, DevOps, BI, Data Engineering) based on tools, project content, and terminology.
+- Detect the candidate’s technical specialization (e.g., Cloud, DevOps, BI, Data Engineering) ONLY for descriptive sections such as profile_summary.
+- Determine business domains ONLY in the DOMAINS section, based strictly on the industries of the companies worked for.
 - Avoid assumptions — rely only on what's clearly stated or strongly implied in the resume.
 - If a field is unknown or not present in the CV, use empty values: "" for strings, [] for lists, {{}} for objects. Do NOT guess.
 - Do NOT wrap arrays or objects into strings. Always output proper JSON values.
@@ -50,8 +51,11 @@ In the "projects_experience" field:
 • Extract any block that contains at least a `project_title:` — even if duration is missing.
   → These blocks are always valid. Extract them even if role, overview, or tech_stack are missing. Fill missing fields with empty values.
 • Preserve the full "duration" exactly as written (e.g., "Jul 2021 – Present"). Do not modify, translate, or guess.
+• Responsibilities MUST be detailed and contextual.
+  - Short bullet points are NOT allowed.
+  - Responsibilities must explain WHAT was done, HOW it was implemented, WHY the approach was chosen, and WHAT impact or purpose it had.
+  - The total Responsibilities section per project must contain at least 100 words.
 • Extract only real, distinct projects. Use visual or semantic separation as an indicator (headings, date blocks, project keywords, client names, etc.).
-• Use concise, technical bullet points (≤18 words) for "responsibilities", starting with action verbs (e.g., Designed, Built, Automated, Integrated).
 • Do not split a single job into multiple projects unless:
   - It has distinct durations, OR
   - There is clear formatting separation.
@@ -86,11 +90,8 @@ In the "projects_experience" field:
 - For "skills_overview":
   * Include all tools used in projects or summary.
   * Estimate approximate "years_of_experience" logically (e.g., from project durations or global statements like "5+ years with Azure").
-  * Output must include ≥10 distinct categories.
+  * Include ALL categories that can be supported by CV content (no minimum count).
   * Each row must follow this format: {{ "category": "", "tools": [], "years_of_experience": "" }}
-  • Extract any block that contains at least a `project_title:` — even if duration is missing.
-  → If duration missing, return it as an empty string "".
-
   * Do not leave "tools" empty — extract at least one tool per category if mentioned anywhere in the CV.
 
 === PROFILE SUMMARY ===
@@ -109,12 +110,24 @@ In the "projects_experience" field:
       {{"language": "English", "level": "C1"}}
   ]
 
+=== DOMAINS ===
+- Determine the candidate’s professional domains based on the industries of the companies they worked in.
+- Domains must represent business sectors or industries (e.g. Banking, Manufacturing, Consulting, Healthcare, E-Commerce).
+- Do NOT use technical skills, tools, or methodologies (e.g. Big Data, Data Engineering, DevOps, Cloud, AI) as domains.
+- If the candidate worked in multiple industries, list all relevant domains as a JSON array of strings.
+
 === OUTPUT RULES ===
 - Return a single valid JSON object strictly matching the SCHEMA.
 - Do NOT return markdown, explanations, comments, or prose — only JSON.
 - Do NOT hallucinate tools, projects, dates, or titles.
 - Do NOT change field names or structure.
 - Dates must be copied exactly as in the source (no reformatting, no translation). If unclear or not present, leave empty.
+- Before returning the final JSON, internally verify:
+  * Responsibilities per project contain at least 100 words.
+  * No arrays or objects are serialized as strings.
+  * "domains" is a JSON array of strings (not a comma-separated string).
+  * All fields strictly match the provided SCHEMA.
+- If any rule is violated, regenerate the output until all constraints are satisfied.
 
 SCHEMA:
 {{
@@ -276,10 +289,8 @@ INSTRUCTIONS:
 - For "skills_overview":
   * Include all tools used in projects or summary.
   * Estimate approximate "years_of_experience" logically (e.g., from project durations or global statements like "5+ years with Azure").
-  * Output must include ≥10 distinct categories.
+  * Include ALL categories that can be supported by CV content (no minimum count).
   * Each row must follow this format: {{ "category": "", "tools": [], "years_of_experience": "" }}
-  • Extract any block that contains at least a `project_title:` — even if duration is missing.
-  → If duration missing, return it as an empty string "".
   * "years_of_experience" MUST never be empty. If not explicitly stated, infer a conservative integer (e.g., 1, 2, 3, 5) from project durations or CV summary.
   * Do not leave "tools" empty — extract at least one tool per category if mentioned anywhere in the CV.
 
@@ -298,6 +309,12 @@ INSTRUCTIONS:
       {{"language": "German", "level": "C2"}},
       {{"language": "English", "level": "C1"}}
   ]
+
+=== DOMAINS ===
+- Determine the candidate’s professional domains based on the industries of the companies they worked in.
+- Domains must represent business sectors or industries (e.g. Banking, Manufacturing, Consulting, Healthcare, E-Commerce).
+- Do NOT use technical skills, tools, or methodologies (e.g. Big Data, Data Engineering, DevOps, Cloud, AI) as domains.
+- If the candidate worked in multiple industries, list all relevant domains as a JSON array of strings.
 
 === OUTPUT RULES ===
 - Return a single valid JSON object strictly matching the SCHEMA.
@@ -437,11 +454,17 @@ INSTRUCTIONS:
 - Clean any OCR noise or stray characters (e.g., "Jan 2023 nJetzt -" → "Jan 2023 – Present").
 - Extract:
   - project_title in English (short, descriptive)
-  - a concise overview in English (2–3 sentences)
+  - a comprehensive overview in English (100+ words)
   - role in English (e.g., "Lead BI Developer", "Data Engineer")
   - duration exactly as written in the text
-  - responsibilities as English bullet-style strings (start with action verbs, max 18 words)
+  - responsibilities as detailed English paragraphs (100+ words each), each describing a major responsibility or achievement
   - tech_stack as a flat list of tools/technologies.
+- For each responsibility:
+  * Provide detailed context about the task and its business impact
+  * Include specific challenges faced and how they were addressed
+  * Mention any methodologies or best practices applied
+  * Describe the scale/scope of work (e.g., team size, data volume, business impact)
+  * Include quantifiable results if available
 - If any field is missing in the text, leave it as an empty string or empty list.
 - Return ONLY JSON of the form {{ "projects_experience": [PROJECT_SCHEMA, ...]}}.
 
@@ -492,8 +515,8 @@ def run_stage_based_parsing(text: str, model: str = "gpt-5-mini") -> dict:
 def gpt_generate_text_cv_summary(text: str, model: str = "gpt-5-mini") -> dict:
     """
     Generates a concise CV summary including:
-    - Relevant Experience (2–5 key projects, 170–180 words total)
-    - Expertise bullets (3–5 items, 30–32 words per bullet)
+    - Relevant Experience (2–5 key projects, 170–180 words total, including project titles in headers)
+    - Expertise bullets (3–5 items, 32 words total for all bullets combined)
     - Why Me section (~40 words)
     Output is plain text. No JSON. No explanations.
     """
@@ -505,6 +528,7 @@ OUTPUT STRUCTURE:
 
 --- RELEVANT EXPERIENCE ---
 • Include exactly 2–5 projects from 'projects_experience'. No more, no less.
+• For each project, include the project title in the header (e.g., "Project: Project Name").
 • Only use content from the structured 'projects_experience' field. Do not invent or summarize from other sections.
 • Limit total section length to 170–180 words and 1200–1300 characters (including spaces).
 • Each bullet must describe one project only: include title, duration, 1–2 key results (max 18 words each), and 2–3 main technologies.
@@ -515,8 +539,8 @@ OUTPUT STRUCTURE:
 
 --- EXPERTISE ---
 • Write 3–5 bullet points.
-• Each bullet should be 28–30 words (230–250 characters including spaces).
-• Focus on unique technical strengths and relevant experience (e.g., "6+ years with Terraform", "Strong CI/CD background in FinTech").
+• The entire expertise section must be exactly 32 words in total.
+• Keep each bullet point concise and focused on unique technical strengths (e.g., "6+ years with Terraform", "Strong CI/CD background in FinTech").
 • Each point must start with a measurable or domain-relevant phrase, such as:
    - “6+ years with Python and SQL”
    - “Strong CI/CD delivery in FinTech”
