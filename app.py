@@ -40,6 +40,23 @@ if uploaded_file:
         pdf_path = tmp.name
     st.success(f"✅ Datei hochgeladen: {uploaded_file.name}")
 
+        # --- Session-State Initialisierung (обязательно) ---
+    st.session_state.setdefault("selected_model", "gpt-4o-mini")
+
+    # --- Modell-Auswahl ---
+    MODEL_OPTIONS = {
+        "Schnell (geringere Qualität)": "gpt-4o-mini",
+        "Langsamer (Genauer)": "gpt-5-mini"
+    }
+
+    st.radio(
+        "Modell auswählen",
+        options=list(MODEL_OPTIONS.keys()),
+        key="model_label"
+    )
+
+    st.session_state["selected_model"] = MODEL_OPTIONS[st.session_state["model_label"]]
+
     # 2️⃣ Konvertierung starten
     if st.button("🚀 Konvertierung starten"):
         # Sichtbare, persistente Status-Komponenten
@@ -67,11 +84,16 @@ if uploaded_file:
             # --- Schritt 2: Anfrage an ChatGPT ---
             status_text.text("🤖 Anfrage wird an ChatGPT gesendet…")
             holder = {"value": None, "error": None}
+            # 👇 ВАЖНО: копируем значение ДО thread
+            selected_model = st.session_state["selected_model"]
+
             def _run_gpt():
-                try:
-                    holder["value"] = ask_chatgpt(prepared_text, mode="details")
-                except Exception as e:
-                    holder["error"] = e
+                holder["value"] = ask_chatgpt(
+                    prepared_text,
+                    mode="details",
+                    model=selected_model  # ✅ безопасно
+                )
+
             t = threading.Thread(target=_run_gpt, daemon=True)
             t.start()
 

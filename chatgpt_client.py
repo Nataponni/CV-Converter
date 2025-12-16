@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 # ============================================================
 # 🧠 Hauptfunktion zum Aufruf von GPT
 # ============================================================
-def ask_chatgpt(text, mode="details", base_structure=None, model="gpt-4o-mini"):
+def ask_chatgpt(text, mode="details", base_structure=None, model="gpt-5-mini"):
     """
     Универсальная функция вызова GPT для CV-парсинга.
     Поддерживает режимы:
@@ -197,7 +197,6 @@ TEXT:
         response = client.chat.completions.create(
             model=model,
             messages=messages,
-            temperature=0.1
 )
         raw = response.choices[0].message.content
         return {"raw_response": raw, "mode": mode, "prompt": prompt}
