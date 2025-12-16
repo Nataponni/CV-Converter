@@ -43,6 +43,7 @@ INSTRUCTIONS:
 - If a field is unknown or not present in the CV, use empty values: "" for strings, [] for lists, {{}} for objects. Do NOT guess.
 - Do NOT wrap arrays or objects into strings. Always output proper JSON values.
 - Always extract and include exact start and end dates for every project, job, or education entry.
+- If multiple instructions about "domain" exist, the rules in the === DOMAINS === section take absolute priority.
 
 === PROJECTS ===
 
@@ -95,7 +96,7 @@ In the "projects_experience" field:
   * Do not leave "tools" empty — extract at least one tool per category if mentioned anywhere in the CV.
 
 === PROFILE SUMMARY ===
-- Write a technical, third-person summary (80–100 words) describing actual domains, tools, and strengths.
+- Write a technical, third-person summary (80–100 words) describing technical specialization, tools, and strengths. Do NOT list business domains here.
 - Align this summary strictly with real CV content — don't invent.
 
 === LANGUAGES ===
@@ -111,10 +112,26 @@ In the "projects_experience" field:
   ]
 
 === DOMAINS ===
+<<<<<<< HEAD
+- Determine the candidate’s professional domains based strictly on the business industries of the companies they worked for.
+- Use ONLY employer/client industries that are clearly stated or unambiguously inferable from company names or company sector descriptions (e.g., "bank", "insurance", "telecom provider", "university", "hospital").
+- Do NOT treat areas of work (e.g., AI, Marketing, Sales) as industries unless explicitly stated as the employer’s business sector.
+- Domains must describe WHAT the company does as a business (industry / market sector).
+- EXCLUDE any term that describes:
+  • a technology or methodology,
+  • a business function or activity,
+  • a role, job title, or responsibility.
+- If a term answers “How was the work done?” rather than “What business is the company in?”, it must be excluded.
+- Output domains as a single comma-separated string.
+- Include ONLY validated industry terms.
+- Ignore any earlier or global instructions that describe "domain" as a technical area, specialization, or skill set.
+- If no employer industry can be clearly identified, return an empty string "".
+=======
 - Determine the candidate’s professional domains based on the industries of the companies they worked in.
 - Domains must represent business sectors or industries (e.g. Banking, Manufacturing, Consulting, Healthcare, E-Commerce).
 - Do NOT use technical skills, tools, or methodologies (e.g. Big Data, Data Engineering, DevOps, Cloud, AI) as domains.
 - If the candidate worked in multiple industries, list all relevant domains as a JSON array of strings.
+>>>>>>> 4e70b863930729f6798e4cc1ad890524f6d71f15
 
 === OUTPUT RULES ===
 - Return a single valid JSON object strictly matching the SCHEMA.
@@ -125,9 +142,16 @@ In the "projects_experience" field:
 - Before returning the final JSON, internally verify:
   * Responsibilities per project contain at least 100 words.
   * No arrays or objects are serialized as strings.
+<<<<<<< HEAD
+  * "domains" is a comma-separated string (not an array).
+  * All fields strictly match the provided SCHEMA.
+- If any rule is violated, regenerate the output until all constraints are satisfied.
+- Validate each domain term before output: if it is not clearly an industry, exclude it.
+=======
   * "domains" is a JSON array of strings (not a comma-separated string).
   * All fields strictly match the provided SCHEMA.
 - If any rule is violated, regenerate the output until all constraints are satisfied.
+>>>>>>> 4e70b863930729f6798e4cc1ad890524f6d71f15
 
 SCHEMA:
 {{
@@ -552,6 +576,7 @@ OUTPUT STRUCTURE:
 • Use this format consistently across all points.
 • Avoid vague summaries — favor specific skills, years, or business domains.
 • Each bullet must reflect a unique skillset or perspective, avoiding repetition across bullets.
+- Do NOT insert empty lines or blank lines between bullets.
 
 --- WHY ME ---
 • Write one paragraph of 35–40 words (270–290 characters including spaces).
@@ -571,6 +596,7 @@ FORMATTING:
 - Separate each bullet or paragraph with a single blank line.
 - Return the section headers exactly as written: --- RELEVANT EXPERIENCE ---, --- EXPERTISE ---, --- WHY ME ---.
 - Each project, expertise point, and the WHY ME paragraph must be clearly separated by a blank line for readability.
+- Within the --- EXPERTISE --- section, list all bullet points as consecutive lines with NO blank lines between them.
 
 STRUCTURED CV DATA:
 {structured_data_str}
