@@ -380,14 +380,20 @@ def normalize_domains(domains, data):
 
     return [d.title() for d in sorted(result)]
 
+def normalize_project_domains(project: dict) -> list[str]:
+    if not isinstance(project, dict):
+        return []
+    return normalize_domains(project.get("domains", []), project)
+
 # ===============================================
-# 🧩 Основной вызов
+# Основной вызов
 # ===============================================
 
 def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
-    # 🧩 Если проекты пришли строкой — распарсим обратно в список
+    # Если проекты пришли строкой — распарсим обратно в список
     if isinstance(data.get("projects_experience"), str):
         import json, ast
+
         try:
             data["projects_experience"] = json.loads(data["projects_experience"].replace("'", '"'))
         except Exception:
@@ -396,23 +402,36 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
             except Exception:
                 data["projects_experience"] = []
 
-    # 📌 Применим исправление к duration
+    # Применим исправление к duration
     data["projects_experience"] = unify_durations(data.get("projects_experience", []))
     data["projects_experience"] = fix_open_date_ranges(data["projects_experience"])
 
-    # 📌 Skills
+    # Skills
     data["hard_skills"] = clean_duplicates_in_skills(data.get("hard_skills", {}))
 
-    # 📌 Skills overview
+    # Skills overview
     flat_skills = split_skills_overview_rows(data.get("skills_overview", []))
     reconstructed = generate_skills_overview(flat_skills)
     data["skills_overview"] = filter_skills_overview(reconstructed)
-    
-    data["domains"] = normalize_domains(data.get("domains", []), data)
-    # 📌 Очистка текста
+
+    # Project domains (hybrid: GPT output + fallback via keywords per project)
+    for project in data.get("projects_experience", []):
+        if not isinstance(project, dict):
+            continue
+        project["domains"] = normalize_project_domains(project)
+
+    # Global domains: derived ONLY from project domains (no global extraction)
+    project_domains = []
+    for p in data.get("projects_experience", []):
+        if isinstance(p, dict) and isinstance(p.get("domains"), list):
+            project_domains.extend([str(x) for x in p.get("domains", []) if str(x).strip()])
+    combined = sorted({d.strip().title() for d in project_domains if str(d).strip()})
+    data["domains"] = combined
+
+    # Очистка текста
     data = clean_text_fields(data)
 
-    # 🧠 Страховка — если после обработки опять строка, парсим повторно
+    # Страховка — если после обработки опять строка, парсим повторно
     if isinstance(data.get("projects_experience"), str):
         import ast
         try:
@@ -420,9 +439,7 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
         except Exception:
             data["projects_experience"] = []
 
-    # ===============================================
-    # 🧠 Автозаполнение role и duration, если GPT пропустил
-    # ===============================================
+    # Автозаполнение role и duration, если GPT пропустил
     for project in data.get("projects_experience", []):
         title = project.get("project_title", "") or ""
         overview = project.get("overview", "") or ""
@@ -459,9 +476,8 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
     return data
 
 
-
 # ===============================================
-# 🧼 Очистка текстов и проверка структуры
+# Очистка текстов и проверка структуры
 # ===============================================
 
 def clean_text_fields(data):

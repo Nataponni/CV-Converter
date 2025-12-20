@@ -112,7 +112,6 @@ In the "projects_experience" field:
   ]
 
 === DOMAINS ===
-<<<<<<< HEAD
 - Determine the candidate’s professional domains based strictly on the business industries of the companies they worked for.
 - Use ONLY employer/client industries that are clearly stated or unambiguously inferable from company names or company sector descriptions (e.g., "bank", "insurance", "telecom provider", "university", "hospital").
 - Do NOT treat areas of work (e.g., AI, Marketing, Sales) as industries unless explicitly stated as the employer’s business sector.
@@ -121,17 +120,7 @@ In the "projects_experience" field:
   • a technology or methodology,
   • a business function or activity,
   • a role, job title, or responsibility.
-- If a term answers “How was the work done?” rather than “What business is the company in?”, it must be excluded.
-- Output domains as a single comma-separated string.
-- Include ONLY validated industry terms.
-- Ignore any earlier or global instructions that describe "domain" as a technical area, specialization, or skill set.
-- If no employer industry can be clearly identified, return an empty string "".
-=======
-- Determine the candidate’s professional domains based on the industries of the companies they worked in.
-- Domains must represent business sectors or industries (e.g. Banking, Manufacturing, Consulting, Healthcare, E-Commerce).
-- Do NOT use technical skills, tools, or methodologies (e.g. Big Data, Data Engineering, DevOps, Cloud, AI) as domains.
 - If the candidate worked in multiple industries, list all relevant domains as a JSON array of strings.
->>>>>>> 4e70b863930729f6798e4cc1ad890524f6d71f15
 
 === OUTPUT RULES ===
 - Return a single valid JSON object strictly matching the SCHEMA.
@@ -142,16 +131,10 @@ In the "projects_experience" field:
 - Before returning the final JSON, internally verify:
   * Responsibilities per project contain at least 100 words.
   * No arrays or objects are serialized as strings.
-<<<<<<< HEAD
-  * "domains" is a comma-separated string (not an array).
-  * All fields strictly match the provided SCHEMA.
-- If any rule is violated, regenerate the output until all constraints are satisfied.
-- Validate each domain term before output: if it is not clearly an industry, exclude it.
-=======
   * "domains" is a JSON array of strings (not a comma-separated string).
   * All fields strictly match the provided SCHEMA.
 - If any rule is violated, regenerate the output until all constraints are satisfied.
->>>>>>> 4e70b863930729f6798e4cc1ad890524f6d71f15
+- Validate each domain term before output: if it is not clearly an industry, exclude it.
 
 SCHEMA:
 {{
@@ -187,7 +170,8 @@ SCHEMA:
       "role": "",
       "duration": "",
       "responsibilities": [],
-      "tech_stack": []
+      "tech_stack": [],
+      "domains": []
     }}
   ],
   "skills_overview": [
@@ -468,11 +452,16 @@ PROJECT_SCHEMA:
   "role": "",
   "duration": "",
   "responsibilities": [],
-  "tech_stack": []
+  "tech_stack": [],
+  "domains": []
 }}
 
 INSTRUCTIONS:
 - For each input project, produce one object following PROJECT_SCHEMA.
+- Determine project domains (industries/business sectors) based ONLY on the content of the current project.
+- Domains must represent industries (e.g. Banking, Manufacturing, Consulting, Healthcare, E-Commerce).
+- Do NOT use technical skills/tools/methodologies as domains (e.g. Big Data, Cloud, DevOps, AI).
+- If unclear, return an empty list for domains.
 - If the original project text is not in English (e.g. German), TRANSLATE all textual fields
   (project_title, overview, role, responsibilities, tech_stack items) to natural English.
 - Preserve the meaning and level of technical detail when translating.
