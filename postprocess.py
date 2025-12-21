@@ -428,6 +428,11 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
     combined = sorted({d.strip().title() for d in project_domains if str(d).strip()})
     data["domains"] = combined
 
+    # Форматирование responsibilities для каждого проекта
+    for project in data.get("projects_experience", []):
+        if isinstance(project, dict) and "responsibilities" in project:
+            project["responsibilities"] = format_responsibilities(project.get("responsibilities", []))
+
     # Очистка текста
     data = clean_text_fields(data)
 
@@ -507,3 +512,83 @@ def validate_cv_schema(cv_json):
     ]
     missing = [f for f in required_fields if f not in cv_json or not cv_json[f]]
     return missing
+
+
+# ===============================================
+# 📝 Форматирование responsibilities
+# ===============================================
+
+def format_responsibilities(responsibilities):
+    """
+    Format responsibilities into detailed, structured bullet points.
+
+    Goals:
+    - Break long paragraphs into informative bullet points (70–100 words each)
+    - Preserve maximum information and context
+    - Maintain readability through structure
+    - Final target: up to 5 bullets, ~350–500 words per project (only if source text supports it)
+    """
+    if not responsibilities:
+        return []
+    
+    if isinstance(responsibilities, str):
+        responsibilities = [responsibilities]
+    
+    if not isinstance(responsibilities, list):
+        return []
+    
+    formatted = []
+    
+    for item in responsibilities:
+        if not isinstance(item, str):
+            continue
+            
+        item = item.strip()
+        if not item:
+            continue
+        
+        word_count = len(item.split())
+
+        # Если пункт уже в целевом диапазоне (65-110 слов), оставляем как есть
+        if 65 <= word_count <= 110:
+            formatted.append(item)
+            continue
+
+        # Если короче 65 слов, оставляем — не можем достроить
+        if word_count < 65:
+            formatted.append(item)
+            continue
+        
+        # Разбиваем длинные тексты на предложения
+        sentences = re.split(r'(?<=[.!?])\s+', item)
+        
+        current_bullet = []
+        current_word_count = 0
+        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+                
+            sentence_words = len(sentence.split())
+            
+            # Если добавление предложения не превысит 110 слов
+            if current_word_count + sentence_words <= 110:
+                current_bullet.append(sentence)
+                current_word_count += sentence_words
+            else:
+                # Сохраняем накопленное и начинаем новый bullet
+                if current_bullet:
+                    formatted.append(' '.join(current_bullet))
+                current_bullet = [sentence]
+                current_word_count = sentence_words
+        
+        # Добавляем последний накопленный bullet
+        if current_bullet:
+            formatted.append(' '.join(current_bullet))
+    
+    # Ограничиваем до 5 пунктов
+    if len(formatted) > 5:
+        formatted = formatted[:5]
+    
+    return formatted

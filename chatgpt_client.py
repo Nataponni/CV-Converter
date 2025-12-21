@@ -52,10 +52,29 @@ In the "projects_experience" field:
 • Extract any block that contains at least a `project_title:` — even if duration is missing.
   → These blocks are always valid. Extract them even if role, overview, or tech_stack are missing. Fill missing fields with empty values.
 • Preserve the full "duration" exactly as written (e.g., "Jul 2021 – Present"). Do not modify, translate, or guess.
-• Responsibilities MUST be detailed and contextual.
-  - Short bullet points are NOT allowed.
-  - Responsibilities must explain WHAT was done, HOW it was implemented, WHY the approach was chosen, and WHAT impact or purpose it had.
-  - The total Responsibilities section per project must contain at least 100 words.
+• Responsibilities MUST be clear, concise, and professional.
+  - Create 3–5 bullet points per project.
+  - Each bullet MUST be 26–30 words. Target exactly 28 words for optimal balance.
+  - Count every word: articles, prepositions, conjunctions, technical terms all count.
+  - CRITICAL: Focus on MECHANISM (HOW), not effect/result. Describe the method, approach, or implementation technique.
+  - Structure: Action verb + detailed mechanism/method + technical context. Results are secondary.
+  - Example (28 words): "Architected and maintained Azure ARM and Bicep templates to standardize infrastructure provisioning across development, test, and production environments using declarative configuration and version control."
+  - Example (27 words): "Developed CI/CD pipelines with Azure DevOps YAML using gated approvals, environment-specific variables, and automated rollback mechanisms to control release processes across teams."
+  - Example (28 words): "Implemented Datadog APM and infrastructure monitoring by configuring custom dashboards, performance metrics collection, and automated alert thresholds to track service health in production."
+  - BAD (focuses on result): "ensuring efficient provisioning across different environments"
+  - GOOD (focuses on mechanism): "standardizing provisioning across dev, test, and production environments"
+  - BAD: "improving application performance"
+  - GOOD: "implementing caching strategies and database query optimization"
+  - Keep it direct and professional: Emphasize the concrete actions, methods, and techniques used.
+  - FORBIDDEN words to NEVER use: comprehensive, robust, effectively, successfully, seamlessly, efficiently, ensuring, enabling, leading to, resulting in.
+  - Do NOT expand acronyms unless absolutely necessary for clarity (use "ARM" not "Azure Resource Manager", "CI/CD" not "Continuous Integration/Continuous Deployment").
+  - Use precise verbs: Architected, Developed, Implemented, Designed, Built, Deployed, Configured, Automated, Standardized, Orchestrated, Integrated.
+  - Include specific mechanisms: exact tools, configurations, architectural patterns, methods, processes.
+  - Mention technical context: environments, scale, integration points, architectural constraints.
+  - If impact/result is mentioned, keep it brief and secondary to the mechanism.
+  - Do NOT invent metrics; include quantitative results only if present in source.
+  - If a bullet is <26 words, add more detail about the mechanism or technical approach.
+  - If a bullet is >30 words, remove redundant words or simplify phrasing.
 • Extract only real, distinct projects. Use visual or semantic separation as an indicator (headings, date blocks, project keywords, client names, etc.).
 • Do not split a single job into multiple projects unless:
   - It has distinct durations, OR
@@ -129,7 +148,13 @@ In the "projects_experience" field:
 - Do NOT change field names or structure.
 - Dates must be copied exactly as in the source (no reformatting, no translation). If unclear or not present, leave empty.
 - Before returning the final JSON, internally verify:
-  * Responsibilities per project contain at least 100 words.
+  * Responsibilities per project contain 3–5 bullet points.
+  * Each bullet is 26–30 words (target exactly 28; count ALL words).
+  * Each bullet focuses on MECHANISM (how the work was done), not just results.
+  * NO forbidden words: comprehensive, robust, effectively, successfully, seamlessly, efficiently, ensuring, enabling, leading to, resulting in.
+  * Do not expand acronyms unnecessarily.
+  * If any bullet is <26 words, add more detail about the mechanism or technical approach.
+  * If any bullet is >30 words, remove redundant words.
   * No arrays or objects are serialized as strings.
   * "domains" is a JSON array of strings (not a comma-separated string).
   * All fields strictly match the provided SCHEMA.
@@ -188,9 +213,9 @@ TEXT:
 {text}
 """
 
-# --- Erstellen der Nachrichten
+# --- Создание сообщений
     messages = [
-        {"role": "system", "content": "You are an expert CV parser."},
+        {"role": "system", "content": "You are an expert CV parser. CRITICAL: When writing responsibilities, describe the MECHANISM (how/method), NOT the result. Never use words like 'enabling', 'ensuring', 'improving', 'reducing' - describe what you DID and HOW."},
         {"role": "user", "content": prompt},
     ]
 
@@ -392,7 +417,7 @@ In the "projects_experience" field:
   → These blocks are always valid. Extract them even if role, overview, or tech_stack are missing. Fill missing fields with empty values.
 • Preserve the full "duration" exactly as written (e.g., "Jul 2021 – Present"). Do not modify, translate, or guess.
 • Extract only real, distinct projects. Use visual or semantic separation as an indicator (headings, date blocks, project keywords, client names, etc.).
-• Use concise, technical bullet points (≤18 words) for "responsibilities", starting with action verbs (e.g., Designed, Built, Automated, Integrated).
+• For "responsibilities": create clear, concise professional bullet points (3–5 bullets per project). Each bullet MUST be 26–30 words (target exactly 28); count every word; FOCUS ON MECHANISM (how/method), not result; express action + detailed mechanism/technical approach; NEVER use: comprehensive, robust, effectively, successfully, seamlessly, efficiently, ensuring, enabling, leading to, resulting in; do not expand acronyms; use precise verbs; describe specific methods and configurations. Example: "Configured Kubernetes clusters with Helm Charts using automated deployment pipelines, resource quotas, and pod disruption budgets to manage workload distribution across environments." (26 words — ADD 2 words for target 28)
 • Do not split a single job into multiple projects unless:
   - It has distinct durations, OR
   - There is clear formatting separation.
@@ -469,17 +494,23 @@ INSTRUCTIONS:
 - Clean any OCR noise or stray characters (e.g., "Jan 2023 nJetzt -" → "Jan 2023 – Present").
 - Extract:
   - project_title in English (short, descriptive)
-  - a comprehensive overview in English (100+ words)
+  - overview in English (60-80 words: comprehensive context about the project, its business goal, and scope)
   - role in English (e.g., "Lead BI Developer", "Data Engineer")
   - duration exactly as written in the text
-  - responsibilities as detailed English paragraphs (100+ words each), each describing a major responsibility or achievement
+  - responsibilities as 3–5 clear, concise English bullet points. Each bullet: 26–30 words (target exactly 28).
+  * Structure: action + detailed mechanism/method + technical context. Focus on HOW, not results.
+  * NEVER use: comprehensive, robust, effectively, successfully, seamlessly, efficiently, ensuring, enabling, leading to, resulting in.
+  * Do not expand acronyms unnecessarily.
   - tech_stack as a flat list of tools/technologies.
-- For each responsibility:
-  * Provide detailed context about the task and its business impact
-  * Include specific challenges faced and how they were addressed
-  * Mention any methodologies or best practices applied
-  * Describe the scale/scope of work (e.g., team size, data volume, business impact)
-  * Include quantifiable results if available
+- For each responsibility bullet point:
+  * Start with an action verb (Designed, Built, Implemented, etc.)
+  * One bullet = ONE sentence; include one key task and one clear impact
+  * Each bullet: 26–30 words (target exactly 28), focus on mechanism/method (HOW), not results.
+  * NEVER use: comprehensive, robust, effectively, successfully, seamlessly, efficiently, ensuring, enabling, leading to, resulting in.
+  * Keep acronyms unexpanded unless critical.
+  * Be concrete and technical; avoid generic corporate phrasing
+  * Mention business domain briefly (2–4 words) if relevant
+  * Do NOT invent metrics or numbers; only include quantitative values if explicitly present in the source; otherwise describe impact qualitatively.
 - If any field is missing in the text, leave it as an empty string or empty list.
 - Return ONLY JSON of the form {{ "projects_experience": [PROJECT_SCHEMA, ...]}}.
 
