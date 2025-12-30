@@ -2,6 +2,7 @@ import streamlit as st
 import json, os, tempfile, time
 import threading
 import uuid
+import hashlib
 from pdf_processor import prepare_cv_text
 from chatgpt_client import ask_chatgpt
 from postprocess import postprocess_filled_cv, normalize_project_domains
@@ -13,6 +14,13 @@ st.title("📄 CV-Konverter")
 
 # 1️⃣ Datei-Upload
 uploaded_file = st.file_uploader("Wähle eine PDF-Datei aus", type=["pdf"])
+
+def _stable_hash(obj) -> str:
+    try:
+        s = json.dumps(obj, ensure_ascii=False, sort_keys=True, default=str)
+    except Exception:
+        s = str(obj)
+    return hashlib.md5(s.encode("utf-8")).hexdigest()
 
 def _as_records(x):
     """Streamlit data_editor может вернуть list[dict] или DataFrame-like."""
@@ -82,26 +90,11 @@ def _save_domains_config(domains: list) -> bool:
     config_file = "domains.json"
     try:
         with open(config_file, "w", encoding="utf-8") as f:
-            json.dump({"domains": sorted(set(domains))}, f, indent=2, ensure_ascii=False)
+            json.dump({"domains": sorted(set(domains))}, f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
         print(f"Ошибка при сохранении доменов: {e}")
         return False
-
-
-def _collect_domains(projects: list) -> list[str]:
-    """Собирает домены из проектов + предустановленные из конфига."""
-    out = set()
-    # Домены из проектов
-    for p in projects or []:
-        if isinstance(p, dict):
-            for d in _norm_list(p.get("domains")):
-                if d:
-                    out.add(d)
-    # Домены из конфига
-    config_domains = _load_domains_config()
-    out.update(config_domains)
-    return sorted(out)
 
 
 def _collect_project_domains_only(projects: list) -> list[str]:
@@ -116,13 +109,16 @@ def _collect_project_domains_only(projects: list) -> list[str]:
 
 
 def _projects_to_display(projects: list) -> list:
-    """Подготовка проектов для data_editor: оставляем domains как список."""
+    """Подготовка проектов для data_editor: оставляем domains как список, добавляем company."""
     display = []
     for p in projects or []:
         if isinstance(p, dict):
             row = dict(p)
             # Оставляем domains как список для отображения тегами
             row["domains"] = _norm_domains(row.get("domains", []))
+            # Убеждаемся что company есть
+            if "company" not in row:
+                row["company"] = ""
             display.append(row)
         else:
             display.append(p)
@@ -174,7 +170,7 @@ def clear_candidate_data():
         "projects_experience_full",
         "projects_editor_ver",
         "project_domains_filter",
-]
+    ]
     for key in keys_to_clear:
         st.session_state.pop(key, None)
 
@@ -190,7 +186,7 @@ if uploaded_file:
         pdf_path = tmp.name
     st.success(f"✅ Datei hochgeladen: {uploaded_file.name}")
 
-        # --- Session-State Initialisierung (обязательно) ---
+    # --- Session-State Initialisierung (обязательно) ---
     st.session_state.setdefault("selected_model", "gpt-4o-mini")
 
     # --- Modell-Auswahl ---
@@ -204,7 +200,6 @@ if uploaded_file:
         options=list(MODEL_OPTIONS.keys()),
         key="model_label"
     )
-
     st.session_state["selected_model"] = MODEL_OPTIONS[st.session_state["model_label"]]
 
     # 2️⃣ Konvertierung starten
@@ -262,11 +257,18 @@ if uploaded_file:
                 raise holder["error"]
             result = holder.get("value")
 
+
             # --- Schritt 3: JSON verarbeiten ---
             if "raw_response" in result and result["raw_response"]:
                 status_text.text("🧩 Daten werden verarbeitet…")
                 filled_json = json.loads(result["raw_response"])
                 filled_json = postprocess_filled_cv(filled_json, raw_text)
+
+                # 💾 Автоматически сохраняем все вычисленные данные сразу
+                st.session_state["filled_json"] = filled_json
+                st.session_state["json_bytes"] = json.dumps(
+                    filled_json, indent=2, ensure_ascii=False
+                ).encode("utf-8")
 
                 for i in range(56, 76, 2):
                     time.sleep(0.15)
@@ -274,7 +276,7 @@ if uploaded_file:
                     progress_value = i
                     time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
 
-                # --- Schritt 4: PDF generieren (einmalig) ---
+                # --- Schritt 4: PDF генерировать (einразик) ---
                 status_text.text("📝 PDF wird erstellt…")
                 output_dir = "data_output"
                 os.makedirs(output_dir, exist_ok=True)
@@ -306,7 +308,7 @@ if uploaded_file:
                 position = position.title() if position else "Unbekannte Position"
                 pdf_name = f"CV Inpro {first_name} {position}"
 
-                # --- PDF generieren mit richtigem Namen ---
+                # --- PDF генерировать с правильным именем ---
                 output_dir = "data_output"
                 os.makedirs(output_dir, exist_ok=True)
                 pdf_path = create_pretty_first_section(
@@ -316,14 +318,8 @@ if uploaded_file:
                 with open(pdf_path, "rb") as f:
                     pdf_bytes = f.read()
 
-                # 💾 Ergebnisse speichern
-                st.session_state["filled_json"] = filled_json
-                st.session_state["json_bytes"] = json.dumps(
-                    filled_json, indent=2, ensure_ascii=False
-                ).encode("utf-8")
                 st.session_state["pdf_bytes"] = pdf_bytes
                 st.session_state["pdf_name"] = pdf_name
-
 
             else:
                 st.error("⚠️ Das Modell hat keine Daten zurückgegeben.")
@@ -376,479 +372,335 @@ if "filled_json" in st.session_state:
                 break
     # Опыт / Проекты (list[dict]) — основной ключ: projects_experience
     if isinstance(edited.get("projects_experience"), list):
-        with st.expander("Projekte / Erfahrung (projects_experience)", expanded=True):
-
-            # --- Canonical projects list for this section (source of truth) ---
-            if "projects_experience_full" not in st.session_state or not isinstance(st.session_state.get("projects_experience_full"), list):
-                st.session_state["projects_experience_full"] = edited.get("projects_experience", [])
-            projects_full = st.session_state.get("projects_experience_full", [])
-            if not isinstance(projects_full, list):
-                projects_full = []
-                st.session_state["projects_experience_full"] = projects_full
-
-            # --- force re-render of data_editor when we programmatically change data ---
-            st.session_state.setdefault("projects_editor_ver", 0)
-
-            # --- ensure stable per-row id (needed to merge edits from filtered view back into full list) ---
-            changed = False
-            new_full = []
-            for p in projects_full:
-                if isinstance(p, dict) and "__pid" not in p:
-                    p = dict(p)
-                    p["__pid"] = str(uuid.uuid4())
-                    changed = True
-                new_full.append(p)
-            projects_full = new_full
-            if changed:
-                st.session_state["projects_experience_full"] = projects_full
-
-            # --- Action: auto-detect domains (no GPT), then immediately re-render table ---
-            if st.button("🪄 Domains automatisch erkennen", key="btn_autofill_project_domains"):
-                updated = []
-                for p in projects_full:
-                    if isinstance(p, dict):
-                        p2 = dict(p)  # avoid in-place mutation
-                        p2["domains"] = normalize_project_domains(p2)
-                        updated.append(p2)
-                    else:
-                        updated.append(p)
-
-                st.session_state["projects_experience_full"] = updated
-                st.session_state["projects_editor_ver"] += 1
-                st.session_state["domains_updated_msg"] = True
-                st.rerun()
-
-            if st.session_state.pop("domains_updated_msg", False):
-                st.success("Domains aktualisiert")
-            
-            projects_full = st.session_state.get("projects_experience_full", [])
-            if not isinstance(projects_full, list):
-                projects_full = []
-                st.session_state["projects_experience_full"] = projects_full
-
-            # --- Filter (live) ---
-            # --- Filter state (for table) ---
-            all_domains_for_filter = _collect_domains(projects_full)
-
-            selected_project_domains = st.session_state.get("project_domains_filter") or []
-            selected_project_domains = [x for x in selected_project_domains if x in all_domains_for_filter]
-            st.session_state["project_domains_filter"] = selected_project_domains
-
-            # если фильтр изменился -> пересоздаём data_editor (иначе он может держать старое состояние)
-            curr_filter = tuple(sorted(selected_project_domains))
-            prev_filter = st.session_state.get("__prev_project_domains_filter")
-            if prev_filter != curr_filter:
-                st.session_state["__prev_project_domains_filter"] = curr_filter
-                st.session_state["projects_editor_ver"] += 1
-
-            editor_key = f"ed_projects_experience_{st.session_state['projects_editor_ver']}"
-
-            # --- формируем данные для одной таблицы ---
-            is_filtered_view = bool(selected_project_domains)
-            if is_filtered_view:
-                selected_set = set(map(str, selected_project_domains))
-                display_projects = [
-                    p for p in projects_full
-                    if isinstance(p, dict)
-                    and set(map(str, p.get("domains", []) if isinstance(p.get("domains", []), list) else []))
-                        .intersection(selected_set)
-                ]
-            else:
-                display_projects = projects_full
-
-            # спрятать __pid в таблице (важно: Streamlit скрывает колонки, которых нет в column_order)
-            col_order = []
-            for p in display_projects:
-                if isinstance(p, dict):
-                    for k in p.keys():
-                        if k != "__pid" and k not in col_order:
-                            col_order.append(k)
-
-            num_rows_mode = "fixed" if is_filtered_view else "dynamic"
-            all_domains_for_filter = _collect_domains(projects_full)
-
-            # фильтр пока НЕ рисуем (рисуем после таблицы), но состояние читаем
-            selected_project_domains = st.session_state.get("project_domains_filter") or []
-            selected_project_domains = [x for x in selected_project_domains if x in all_domains_for_filter]
-            st.session_state["project_domains_filter"] = selected_project_domains
-
-            is_filtered_view = bool(selected_project_domains)
-            if is_filtered_view:
-                selected_set = set(map(str, selected_project_domains))
-                display_projects = [
-                    p for p in projects_full
-                    if isinstance(p, dict)
-                    and set(map(str, _norm_list(p.get("domains")))).intersection(selected_set)
-                ]
-            else:
-                display_projects = projects_full
-
-            # --- data_editor ---
-            # Домены отображаются как список тегов (как stack)
-            display_projects_editable = _projects_to_display(display_projects)
-
-            domains_col = st.column_config.ListColumn(
-                "domains",
-                help="Domänen als Tags",
-                width="medium",
-            )
-
-            edited_display = st.data_editor(
-                display_projects_editable,
-                num_rows=("fixed" if is_filtered_view else "dynamic"),
-                width="stretch",
-                key=editor_key,
-                column_order=col_order if col_order else None,
-                column_config={"domains": domains_col},
-            )
-
-            edited_display = _projects_from_display(_as_records(edited_display) or [])
-
-
-            # IMPORTANT: в filtered-view __pid может не вернуться из data_editor — восстановим по позиции
-            if is_filtered_view:
-                fixed = []
-                for src_row, ed_row in zip(display_projects, edited_display):
-                    if isinstance(src_row, dict) and isinstance(ed_row, dict):
-                        ed_row = dict(ed_row)
-
-                        if "__pid" in src_row and "__pid" not in ed_row:
-                            ed_row["__pid"] = src_row["__pid"]
-
-                        if "domains" not in ed_row and "domains" in src_row:
-                            ed_row["domains"] = src_row.get("domains", [])
-
-                    fixed.append(ed_row)
-                edited_display = fixed
-
-            # --- merge обратно в projects_full (если фильтр включён) ---
-            if is_filtered_view:
-                full_by_pid = {
-                    p["__pid"]: p
-                    for p in projects_full
-                    if isinstance(p, dict) and "__pid" in p
-                }
-
-                for p in (edited_display or []):
-                    if isinstance(p, dict) and "__pid" in p:
-                        pid = p["__pid"]
-                        base = full_by_pid.get(pid, {})
-                        if not isinstance(base, dict):
-                            base = {}
-
-                        merged = dict(base)
-                        merged.update(p)
-                        merged["__pid"] = pid
-
-                        if "domains" not in p and "domains" in base:
-                            merged["domains"] = base.get("domains", [])
-
-                        full_by_pid[pid] = merged
-
-                merged_full = []  # <-- ВОТ ЭТО ДОБАВИТЬ
-                for p in projects_full:
-                    if isinstance(p, dict) and "__pid" in p and p["__pid"] in full_by_pid:
-                        merged_full.append(full_by_pid[p["__pid"]])
-                    else:
-                        merged_full.append(p)
-
-                projects_full = merged_full
-            else:
-                # no-filter: просто берём то, что вернул редактор
-                if isinstance(edited_display, list):
-                    projects_full = edited_display
-
-
-            # source of truth
-            st.session_state["projects_experience_full"] = projects_full
-            edited["projects_experience"] = projects_full
-
-            # пересчёт options: домены из проектов + конфиг (чтобы новые домены поялись)
-            all_available_domains = _collect_domains(projects_full)
-            # но фильтруем по тому, что реально есть в текущих проектах
-            project_domains = _collect_project_domains_only(projects_full)
-            display_domains_for_filter = sorted(set(all_available_domains) & set(project_domains))
-
-            # подчистить фильтр (иначе multiselect может падать)
-            st.session_state["project_domains_filter"] = [
-                x for x in (st.session_state.get("project_domains_filter") or [])
-                if x in display_domains_for_filter
-            ]
-
-            # рисуем фильтр ПОСЛЕ таблицы (как ты хочешь)
-            st.multiselect(
-                "Projekt-Filter nach Domains",
-                options=display_domains_for_filter,
-                key="project_domains_filter",
-            )
-
-            # сохраняем текущий VIEW (что сейчас “выбрано” для вывода)
-            active_filter = st.session_state.get("project_domains_filter") or []
-            if active_filter:
-                active_set = set(map(str, active_filter))
-                projects_view = [
-                    p for p in projects_full
-                    if isinstance(p, dict)
-                    and set(map(str, _norm_list(p.get("domains")))).intersection(active_set)
-                ]
-            else:
-                projects_view = projects_full
-
-            st.session_state["projects_experience_view"] = projects_view
-
-        # Domänen (aus Projekten berechnet) — по текущему VIEW, если есть
-        src_projects = projects_view if isinstance(projects_view, list) else projects_full
-        computed_domains = sorted({
+        # --- Всегда обновляем computed_domains после редактирования проектов ---
+        projects_full = edited.get("projects_experience", [])
+        project_domains = set(
             d.strip().title()
-            for p in (src_projects or [])
+            for p in projects_full
             if isinstance(p, dict)
             for d in _norm_list(p.get("domains"))
             if str(d).strip()
-        })
-        edited["domains"] = computed_domains
-
-        # Отображение доменов в текстовом поле (как было в начале)
-        st.session_state["domains_computed_text"] = ", ".join(computed_domains)
-        st.text_area(
-            "Domänen (aus Projekten berechnet)",
-            value=st.session_state["domains_computed_text"],
-            height=80,
-            disabled=True,
-            key="domains_computed_text",
         )
+        config_domains = set(_load_domains_config())
+        computed_domains = sorted(config_domains | project_domains)
+        st.session_state["computed_domains"] = computed_domains
+        edited["computed_domains"] = computed_domains
 
+    # --- Удалено старое поле доменов, теперь актуальное поле только под проектами ---
 
-    else:
-        # Альтернативные ключи, если структура иная
-        for exp_key in ["experience", "work_experience", "jobs"]:
-            if isinstance(edited.get(exp_key), list):
-                with st.expander("Berufserfahrung", expanded=False):
-                    edited[exp_key] = st.data_editor(
-                        edited[exp_key],
-                        num_rows="dynamic",
-                        width="stretch",
-                        key=f"ed_{exp_key}"
-                    )
-                break
+    with st.expander("Projekte / Erfahrung (projects_experience)", expanded=True):
 
+        if st.button("🪄 Domains автоматически erkennen", key="btn_autofill_project_domains_main"):
+            new_domains = set()
+            for p in st.session_state.get("projects_experience_full", []):
+                if isinstance(p, dict):
+                    for d in _norm_list(p.get("domains")):
+                        if d:
+                            new_domains.add(d.strip().title())
+            config_domains = set(_load_domains_config())
+            _save_domains_config(sorted(config_domains | new_domains))
+            st.success("Domänen wurden автоматиш erkannt и сохранены.")
 
-    # Образование: поддержка строкового поля или списка объектов
-    if isinstance(edited.get("education"), list):
-        with st.expander("Ausbildung (education)", expanded=False):
-            edited["education"] = st.data_editor(
-                edited["education"],
-                num_rows="dynamic",
-                width="stretch",
-                key="ed_education"
-            )
-    elif isinstance(edited.get("education"), str):
-        edited["education"] = st.text_area("Ausbildung (education)", value=edited.get("education", ""), height=120, key="education_text")
+        # init source-of-truth once
+        if "projects_experience_full" not in st.session_state or not isinstance(st.session_state["projects_experience_full"], list):
+            st.session_state["projects_experience_full"] = edited.get("projects_experience", []) if isinstance(edited.get("projects_experience"), list) else []
 
-    # Навыки (list[str])
-    if isinstance(edited.get("skills"), list):
-        skills_text = ", ".join(map(str, edited.get("skills", [])))
-        skills_text = st.text_area("Fähigkeiten (durch Komma getrennt)", value=skills_text, height=80, key="skills_text")
-        edited["skills"] = [s.strip() for s in skills_text.split(",") if s.strip()]
+        projects_full = st.session_state["projects_experience_full"]
 
-    # Языки (list[dict]) — поддержка пустого списка через шаблон строки
-    if isinstance(edited.get("languages"), list):
-        with st.expander("Sprachen (languages)", expanded=False):
-            lang_rows = edited.get("languages", [])
-            template_row = {"language": "", "level": ""}
-            if not lang_rows:
-                lang_rows = [template_row]
-            # column_config, чтобы появились столбцы даже при пустых/шаблонных данных
-            lang_rows = st.data_editor(
-                lang_rows,
-                num_rows="dynamic",
-                width="stretch",
-                column_config={
-                    "language": st.column_config.TextColumn("Sprache"),
-                    "level": st.column_config.TextColumn("Niveau")
-                },
-                key="ed_languages"
-            )
-            # очищаем полностью пустые строки
-            cleaned_langs = []
-            for r in lang_rows:
-                if isinstance(r, dict):
-                    lang = str(r.get("language", "")).strip()
-                    lvl = str(r.get("level", "")).strip()
-                    if lang or lvl:
-                        cleaned_langs.append({"language": lang, "level": lvl})
-            edited["languages"] = cleaned_langs
-
-    # Hard skills (dict[str, list[str]])
-    if isinstance(edited.get("hard_skills"), dict):
-        with st.expander("Hard Skills (nach Kategorien)", expanded=False):
-            hs = dict(edited.get("hard_skills", {}))
-            for cat, tools in hs.items():
-                tools_list = []
-                if isinstance(tools, list):
-                    tools_list = [str(t) for t in tools]
-                elif isinstance(tools, str):
-                    tools_list = [t.strip() for t in tools.split(",") if t.strip()]
-                tools_text = ", ".join(tools_list)
-                new_text = st.text_area(f"{cat}", value=tools_text, height=60, key=f"hs_{cat}")
-                hs[cat] = [t.strip() for t in new_text.split(",") if t.strip()]
-            edited["hard_skills"] = hs
-
-    # Skills overview (list[dict])
-    if isinstance(edited.get("skills_overview"), list):
-        with st.expander("Skills-Übersicht", expanded=False):
-            rows = edited.get("skills_overview", [])
-            # шаблон строки, чтобы редактор был редактируемым даже при пустом списке
-            if not rows:
-                rows = [{"category": "", "tools": [], "years_of_experience": ""}]
-            edited["skills_overview"] = st.data_editor(
-                rows,
-                num_rows="dynamic",
-                width="stretch",
-                key="ed_skills_overview"
-            )
-
-    # --- V3 Text Summary (optional) ---
-    # Получаем данные, которые были сохранены после успешной конвертации
-    cv_data_for_summary = st.session_state.get("filled_json", {}) # Используйте 'filled_json' или тот ключ, где лежат финальные данные
-    st.markdown("### 📝 Textbasierte Zusammenfassung")
-    if st.button("Zusammenfassung generieren", key="btn_generate_v3_summary"):
-        with st.spinner("GPT generiert die textbasierte Zusammenfassung…"):
-            from chatgpt_client import gpt_generate_text_cv_summary
-            try:
-                summary_result = gpt_generate_text_cv_summary(
-                    cv_data=cv_data_for_summary,
-                    model="gpt-4o-mini"
-                )
-                if summary_result.get("success") and summary_result.get("output_text"):
-                    st.session_state["v3_summary_text"] = summary_result["output_text"]
-                    st.success("Summary erfolgreich erstellt.")
-                else:
-                    st.warning("⚠️ Keine Zusammenfassung erhalten.")
-            except Exception as e:
-                st.error(f"Fehler bei der Generierung: {e}")
-
-    if "v3_summary_text" in st.session_state:
-        st.text_area(
-            "📄 Zusammenfassung (nur Text)",
-            value=st.session_state["v3_summary_text"],
-            height=300,
-            disabled=False,
-            key="v3_summary_area"
-        )
-
-
-    # Кнопки управления
-    if st.button("💾 Änderungen speichern & PDF erzeugen", key="save_and_regen"):
-
-        # 0) Берём проекты для экспорта: сначала view (фильтр), иначе full, иначе из edited
-        projects_for_export = st.session_state.get("projects_experience_view")
-        if projects_for_export is None:
-            projects_for_export = st.session_state.get("projects_experience_full")
-
-        if projects_for_export is None:
-            projects_for_export = edited.get("projects_experience", [])
-
-        # Streamlit может вернуть DataFrame-like — приводим к list[dict]
-        if hasattr(projects_for_export, "to_dict"):
-            try:
-                projects_for_export = projects_for_export.to_dict(orient="records")
-            except Exception:
-                pass
-
-        if not isinstance(projects_for_export, list):
-            projects_for_export = []
-
-        # 1) Чистим служебные ключи (например "__pid") и нормализуем domains
-        cleaned_projects = []
-        for p in projects_for_export:
+        # display projects
+        display_projects = []
+        for p in projects_full:
             if isinstance(p, dict):
-                p2 = {k: v for k, v in p.items() if not str(k).startswith("__")}
-
-                # domains -> всегда list[str]
-                dom = p2.get("domains", [])
-                if isinstance(dom, str):
-                    dom = [x.strip() for x in dom.split(",") if x.strip()]
-                elif not isinstance(dom, list):
-                    dom = []
-                p2["domains"] = [str(x).strip() for x in dom if str(x).strip()]
-
-                cleaned_projects.append(p2)
+                p2 = dict(p)
+                p2.pop("__pid", None)
+                display_projects.append(p2)
             else:
-                # если вдруг попалась не-dict строка/что-то — пропускаем
-                continue
+                display_projects.append(p)
 
-        edited["projects_experience"] = cleaned_projects
+        # editor (stable key!)
+        projects_edited = st.data_editor(
+            display_projects,
+            num_rows="dynamic",
+            width="stretch",
+            key="ed_projects_experience_main"
+        )
 
-        # 2) Пересчитать domains из тех проектов, которые реально экспортируем
-        computed_domains = sorted({
-            d.strip().title()
-            for p in cleaned_projects
-            if isinstance(p, dict)
-            for d in (p.get("domains", []) if isinstance(p.get("domains", []), list) else [])
+        # persist edits
+        st.session_state["projects_experience_full"] = projects_edited
+        edited["projects_experience"] = projects_edited
+
+        # 1) Собираем домены для фильтра (как есть, без .title())
+        all_domains = sorted({
+            str(d).strip()
+            for p in projects_edited if isinstance(p, dict)
+            for d in _norm_list(p.get("domains"))
             if str(d).strip()
         })
-        edited["domains"] = computed_domains
 
-        # 3) Остальная логика сохранения JSON
-        if not edited.get("title"):
-            edited["title"] = edited.get("position") or edited.get("role") or ""
-
-        if isinstance(edited.get("languages"), list):
-            edited["languages"] = [
-                r for r in edited["languages"]
-                if isinstance(r, dict)
-                and (str(r.get("language", "")).strip() or str(r.get("level", "")).strip())
-            ]
-
-        st.session_state["filled_json"] = edited
-        st.session_state["json_bytes"] = json.dumps(
-            edited, indent=2, ensure_ascii=False
-        ).encode("utf-8")
-
-        # 4) Генерация PDF
-        full_name = edited.get("full_name", "").strip()
-        position = (
-            edited.get("title")
-            or edited.get("position")
-            or edited.get("role")
-            or ""
-        ).strip()
-
-        first_name = full_name.split(" ")[0].title() if full_name else "Unbekannt"
-        position_t = position.title() if position else "Unbekannte Position"
-        pdf_name_new = f"CV Inpro {first_name} {position_t}"
-
-        output_dir = "data_output"
-        os.makedirs(output_dir, exist_ok=True)
-
-        pdf_path_new = create_pretty_first_section(
-            edited, output_dir=output_dir, prefix=pdf_name_new
+        selected_domains = st.multiselect(
+            "Filter nach Domänen",
+            options=all_domains,
+            default=[],
+            key="project_domains_filter_main"
         )
 
-        with open(pdf_path_new, "rb") as f:
-            st.session_state["pdf_bytes"] = f.read()
+        # 2) Фильтруем проекты без учёта регистра
+        if selected_domains:
+            active = {d.strip().casefold() for d in selected_domains}
 
-        st.session_state["pdf_name"] = pdf_name_new
-        st.success("Änderungen gespeichert und PDF aktualisiert")
+            filtered_projects = []
+            for p in projects_edited:
+                if not isinstance(p, dict):
+                    continue
+                project_domains = {d.strip().casefold() for d in _norm_list(p.get("domains"))}
+                if project_domains & active:
+                    filtered_projects.append(p)
+        else:
+            filtered_projects = projects_edited
 
-    st.markdown("---")
-    st.subheader("⬇️ Ergebnisse herunterladen")
+        # store for footer button (PDF)
+        st.session_state["filtered_projects_for_pdf"] = filtered_projects
+        st.session_state["selected_domains_for_pdf"] = selected_domains
+
+
+        # 3) Domains из отфильтрованных проектов
+        domains_out = sorted({
+            str(d).strip()
+            for p in filtered_projects if isinstance(p, dict)
+            for d in _norm_list(p.get("domains"))
+            if str(d).strip()
+        })
+
+        # 4) Companies/Firmen из отфильтрованных проектов
+        companies_out = sorted({
+            str(p.get("company", "")).strip()
+            for p in filtered_projects
+            if isinstance(p, dict) and str(p.get("company", "")).strip()
+        })
+      
+        # 5) Сохраняем списки для PDF (именно списки, не строки)
+        st.session_state["pdf_domains_list"] = domains_out
+        st.session_state["pdf_companies_list"] = companies_out
+
+        # 6) UI: ключи виджетов (ВАЖНО: state обновляем по этим ключам)
+        DOMAINS_UI_KEY = "computed_domains_text_filtered_ui"
+        COMPANIES_UI_KEY = "computed_companies_text_filtered_ui"
+
+        st.session_state[DOMAINS_UI_KEY] = ", ".join(domains_out)
+        st.session_state[COMPANIES_UI_KEY] = ", ".join(companies_out)
+
+        # 7) Выводим поля ОДИН раз (без value=, иначе может не обновляться)
+        st.text_area("Domains", height=60, disabled=True, key=DOMAINS_UI_KEY)
+        st.text_area("Firmen",  height=60, disabled=True, key=COMPANIES_UI_KEY)
+
+        # 8) Флаг обновления PDF при изменении фильтра
+        st.session_state.setdefault("pdf_needs_refresh", False)
+        current_sel = tuple(sorted([s.strip().casefold() for s in selected_domains]))
+        if st.session_state.get("pdf_filter_sel") != current_sel:
+            st.session_state["pdf_filter_sel"] = current_sel
+            st.session_state["pdf_needs_refresh"] = True
+
+# Пример: Hard Skills
+if isinstance(edited.get("hard_skills"), dict):
+    with st.expander("Fachliche Kompetenzen (Hard Skills)", expanded=False):
+        hard_skills_list = [{"Kategorie": k, "Werkzeuge": v if isinstance(v, list) else [v]} for k, v in edited["hard_skills"].items()]
+        hard_skills_edited = st.data_editor(
+            hard_skills_list,
+            num_rows="dynamic",
+            width="stretch",
+            key="ed_hard_skills",
+            column_config={
+                "Kategorie": st.column_config.TextColumn("Kategorie"),
+                "Werkzeuge": st.column_config.ListColumn("Werkzeuge/Technologien")
+            }
+        )
+        edited["hard_skills"] = {
+            row["Kategorie"]: row["Werkzeuge"]
+            for row in hard_skills_edited if row.get("Kategorie")
+        }
+
+# Пример: Skills overview
+if isinstance(edited.get("skills_overview"), list):
+    with st.expander("Kompetenzübersicht (Skills Overview)", expanded=False):
+        skills_rows = edited.get("skills_overview", [])
+        if not isinstance(skills_rows, list):
+            skills_rows = []
+        if not skills_rows:
+            skills_rows = [{"Kategorie": "", "Werkzeuge": [], "Jahre Erfahrung": ""}]
+        # Преобразуем все Werkzeuge к списку
+        for row in skills_rows:
+            if not isinstance(row.get("Werkzeuge"), list):
+                row["Werkzeuge"] = [row["Werkzeuge"]] if row.get("Werkzeuge") else []
+        skills_edited = st.data_editor(
+            skills_rows,
+            num_rows="dynamic",
+            width="stretch",
+            key="ed_skills_overview_main",
+            column_config={
+                "Kategorie": st.column_config.TextColumn("Kategorie"),
+                "Werkzeuge": st.column_config.ListColumn("Werkzeuge/Technologien"),
+                "Jahre Erfahrung": st.column_config.TextColumn("Jahre Erfahrung")
+            }
+        )
+        edited["skills_overview"] = skills_edited
+
+
+# --- Sprachen (languages) ---
+if isinstance(edited.get("languages"), list):
+    with st.expander("Sprachen", expanded=False):
+        lang_rows = edited.get("languages", [])
+        if not isinstance(lang_rows, list):
+            lang_rows = []
+        if not lang_rows:
+            lang_rows = [{"Sprache": "", "Niveau": ""}]
+        lang_edited = st.data_editor(
+            lang_rows,
+            num_rows="dynamic",
+            width="stretch",
+            key="ed_languages_main",
+            column_config={
+                "Sprache": st.column_config.TextColumn("Sprache"),
+                "Niveau": st.column_config.TextColumn("Niveau")
+            }
+        )
+        edited["languages"] = lang_edited
+        st.session_state["languages"] = lang_edited
+
+# --- Ausbildung (Education) ---
+# Гарантируем, что education всегда список для отображения редактора
+if not isinstance(edited.get("education"), list):
+    edited["education"] = []
+with st.expander("Ausbildung (Education)", expanded=False):
+    edu_rows = edited.get("education", [])
+    if not isinstance(edu_rows, list):
+        edu_rows = []
+    if not edu_rows:
+        edu_rows = [{"Institution": "", "Abschluss": "", "Jahr": ""}]
+    edu_edited = st.data_editor(
+        edu_rows,
+        num_rows="dynamic",
+        width="stretch",
+        key="ed_education_main",
+        column_config={
+            "Institution": st.column_config.TextColumn("Institution/Universität"),
+            "Abschluss": st.column_config.TextColumn("Abschluss/Fachrichtung"),
+            "Jahr": st.column_config.TextColumn("Abschlussjahr")
+        }
+    )
+    edited["education"] = edu_edited
+    st.session_state["education"] = edu_edited
+    if "filled_json" in st.session_state:
+        st.session_state["filled_json"]["education"] = edu_edited
+
+# --- после всех редакторов (Hard Skills / Skills Overview / Summary / Languages etc.) ---
+st.markdown("---")
+st.subheader("⬇️ Ergebnisse herunterladen")
+
+# PDF-Option — теперь в конце
+use_filter_for_pdf = st.checkbox(
+    "Nur gefilterte Projekte ins PDF übernehmen",
+    value=True,
+    key="use_filter_for_pdf_footer"
+)
+
+# Берём актуальные проекты
+projects_full_now = st.session_state.get("projects_experience_full", edited.get("projects_experience", []))
+filtered_projects_now = st.session_state.get("filtered_projects_for_pdf", projects_full_now)
+selected_domains_now = st.session_state.get("selected_domains_for_pdf", [])
+
+# --- строим "снимок" данных, которые ДОЛЖНЫ попасть в PDF ---
+pdf_preview = dict(edited)
+
+if use_filter_for_pdf and selected_domains_now:
+    pdf_preview["projects_experience"] = filtered_projects_now
+    pdf_preview["domains"] = st.session_state.get("pdf_domains_list", [])
+    pdf_preview["companies"] = st.session_state.get("pdf_companies_list", [])
+else:
+    pdf_preview["projects_experience"] = projects_full_now
+    # domains/companies считаем из полного списка проектов
+    pdf_preview["domains"] = sorted({
+        str(d).strip()
+        for p in projects_full_now if isinstance(p, dict)
+        for d in _norm_list(p.get("domains"))
+        if str(d).strip()
+    })
+    pdf_preview["companies"] = sorted({
+        str(p.get("company", "")).strip()
+        for p in projects_full_now
+        if isinstance(p, dict) and str(p.get("company", "")).strip()
+    })
+
+# title safety
+if not pdf_preview.get("title"):
+    pdf_preview["title"] = pdf_preview.get("position") or pdf_preview.get("role") or ""
+
+current_pdf_hash = _stable_hash(pdf_preview)
+last_saved_hash = st.session_state.get("last_saved_pdf_hash")
+
+pdf_needs_refresh = (last_saved_hash != current_pdf_hash)
+st.session_state["pdf_needs_refresh"] = pdf_needs_refresh
+
+if pdf_needs_refresh:
+    st.warning("PDF ist nicht aktuell. Bitte klicke auf „Änderungen speichern & PDF aktualisieren“.")
+
+# --- ЕДИНСТВЕННАЯ КНОПКА: сохранить всё + обновить PDF ---
+if st.button("💾 Änderungen speichern & PDF aktualisieren", key="btn_save_all_and_pdf_footer"):
+    # 1) сохраняем финальный JSON (всегда полный, без фильтра — чтобы JSON был “истиной”)
+    final_json = dict(edited)
+    final_json["projects_experience"] = projects_full_now
+
+    st.session_state["filled_json"] = final_json
+    st.session_state["json_bytes"] = json.dumps(final_json, indent=2, ensure_ascii=False).encode("utf-8")
+
+    # 2) создаём PDF по pdf_preview (уже с учётом фильтра/без фильтра)
+    pdf_json = dict(pdf_preview)
+
+    # Удаляем пустые поля перед генерацией PDF
+    def _remove_empty_fields(d):
+        if isinstance(d, dict):
+            return {k: _remove_empty_fields(v) for k, v in d.items() if v not in (None, "", [], {})}
+        elif isinstance(d, list):
+            return [ _remove_empty_fields(x) for x in d if x not in (None, "", [], {}) ]
+        else:
+            return d
+    pdf_json = _remove_empty_fields(pdf_json)
+
+    if not pdf_json.get("title"):
+        pdf_json["title"] = pdf_json.get("position") or pdf_json.get("role") or ""
+
+    output_dir = "data_output"
+    os.makedirs(output_dir, exist_ok=True)
 
     pdf_name = st.session_state.get("pdf_name", "CV_Streamlit")
 
+    pdf_path = create_pretty_first_section(pdf_json, output_dir=output_dir, prefix=pdf_name)
+    with open(pdf_path, "rb") as f:
+        st.session_state["pdf_bytes"] = f.read()
+
+    # 3) помечаем PDF как актуальный
+    st.session_state["last_saved_pdf_hash"] = current_pdf_hash
+    st.session_state["pdf_needs_refresh"] = False
+    st.success("Alle Änderungen wurden gespeichert und das PDF wurde aktualisiert.")
+
+# --- Downloads ---
+pdf_name = st.session_state.get("pdf_name", "CV_Streamlit")
+
+st.download_button(
+    label="📘 JSON herunterladen",
+    data=st.session_state.get("json_bytes", b""),
+    file_name=f"{pdf_name}_result.json",
+    mime="application/json",
+    key="download_json"
+)
+
+if "pdf_bytes" in st.session_state:
     st.download_button(
-        label="📘 JSON herunterladen",
-        data=st.session_state["json_bytes"],
-        file_name=f"{pdf_name}_result.json",
-        mime="application/json",
-        key="download_json"
+        label="📄 PDF herunterladen",
+        data=st.session_state["pdf_bytes"],
+        file_name=f"{pdf_name}.pdf",
+        mime="application/pdf",
+        key="download_pdf",
+        disabled=st.session_state.get("pdf_needs_refresh", False)
     )
 
-    if "pdf_bytes" in st.session_state:
-        st.download_button(
-            label="📄 PDF herunterladen",
-            data=st.session_state["pdf_bytes"],
-            file_name=f"{pdf_name}.pdf",
-            mime="application/pdf",
-            key="download_pdf"
-        )
+

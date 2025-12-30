@@ -162,25 +162,43 @@ def make_left_box(data, styles):
     header_style = ParagraphStyle("LeftHeader", parent=styles["Heading3"], fontName=BOLD_FONT, spaceAfter=6)
 
     edu = data.get("education", "")
+    # Исправление: если education — список, собрать строки
+    if isinstance(edu, list):
+        edu = "<br/>".join(
+            [
+                " | ".join(str(v) for v in [row.get("Institution"), row.get("Abschluss"), row.get("Jahr")] if v)
+                for row in edu if isinstance(row, dict) and any(row.values())
+            ]
+        )
     if edu:
         items += [p("<b>Education:</b>", header_style), p(edu, styles["Normal"]), Spacer(0, 6)]
 
     langs = data.get("languages", [])
-    if langs:
-        items.append(p("<b>Languages:</b>", header_style))
-        for lang in langs:
-            lang_name = lang.get("language", "")
-            lvl = lang.get("level", "")
-            if lang_name and lvl:
-                items.append(Paragraph(f"{lang_name} &mdash; {lvl}", styles["Normal"]))
-            elif lang_name:
-                items.append(p(f"• {lang_name}", styles["Normal"]))
-        items.append(Spacer(0, 6))
+    # Не выводим блок, если нет ни одного заполненного языка
+    if langs and isinstance(langs, list):
+        nonempty_langs = [lang for lang in langs if (lang.get("language") or lang.get("Sprache"))]
+        if nonempty_langs:
+            items.append(p("<b>Languages:</b>", header_style))
+            for lang in nonempty_langs:
+                lang_name = lang.get("language") or lang.get("Sprache", "")
+                lvl = lang.get("level") or lang.get("Niveau", "")
+                if lang_name and lvl:
+                    items.append(Paragraph(f"{lang_name} &mdash; {lvl}", styles["Normal"]))
+                elif lang_name:
+                    items.append(p(f"• {lang_name}", styles["Normal"]))
+            items.append(Spacer(0, 6))
 
     dom = data.get("domains", [])
     if dom:
         items.append(p("<b>Domains:</b>", header_style))
         items.append(p("<br/>".join(dom), styles["Normal"]))
+        items.append(Spacer(0, 6))
+
+    companies = data.get("companies", [])
+    if companies:
+        items.append(p("<b>Companies:</b>", header_style))
+        items.append(p("<br/>".join(companies), styles["Normal"]))
+        items.append(Spacer(0, 6))
 
     return KeepInFrame(0, 0, items, mode="shrink")
 
@@ -559,7 +577,7 @@ def make_skills_overview_box(data, styles):
     # ✅ Фильтрация по опыту — показываем только навыки с YoE > 0
     filtered = []
     for item in skills_overview:
-        yoe_raw = str(item.get("years_of_experience", "")).strip()
+        yoe_raw = str(item.get("years_of_experience", ""))
         nums = re.findall(r"\d+(?:\.\d+)?", yoe_raw)
         yoe_num = float(nums[-1]) if nums else 0.0
         if yoe_num > 0:
@@ -584,7 +602,7 @@ def make_skills_overview_box(data, styles):
     for item in skills_overview:
         cat = (item.get("category") or "").strip()
         tools_list = item.get("tools", [])  # ✅ правильный ключ
-        yoe_raw = (str(item.get("years_of_experience", "")).strip())  # для вывода как есть
+        yoe_raw = (str(item.get("years_of_experience", "")))  # для вывода как есть
 
         # берём максимальное число из строки (поддержит "4.8", "4–5", "5+")
         nums = re.findall(r"\d+(?:\.\d+)?", yoe_raw)
