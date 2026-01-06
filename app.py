@@ -500,12 +500,17 @@ if "filled_json" in st.session_state:
             st.session_state["pdf_filter_sel"] = current_sel
             st.session_state["pdf_needs_refresh"] = True
 
-# Пример: Hard Skills
+# Hard Skills и Skills overview
 if "filled_json" in st.session_state:
     edited = dict(st.session_state["filled_json"]) if isinstance(st.session_state["filled_json"], dict) else {}
+
+    # Hard Skills
     if isinstance(edited.get("hard_skills"), dict):
         with st.expander("Fachliche Kompetenzen (Hard Skills)", expanded=False):
-            hard_skills_list = [{"Kategorie": k, "Werkzeuge": v if isinstance(v, list) else [v]} for k, v in edited["hard_skills"].items()]
+            hard_skills_list = [
+                {"Kategorie": k, "Werkzeuge": v if isinstance(v, list) else [v]}
+                for k, v in edited["hard_skills"].items()
+            ]
             hard_skills_edited = st.data_editor(
                 hard_skills_list,
                 num_rows="dynamic",
@@ -521,32 +526,30 @@ if "filled_json" in st.session_state:
                 for row in hard_skills_edited if row.get("Kategorie")
             }
 
-
-# Skills overview
-if isinstance(edited.get("skills_overview"), list):
-    with st.expander("Kompetenzübersicht (Skills Overview)", expanded=False):
-        skills_rows = edited.get("skills_overview", [])
-        if not isinstance(skills_rows, list):
-            skills_rows = []
-        if not skills_rows:
-            skills_rows = [{"Kategorie": "", "Werkzeuge": [], "Jahre Erfahrung": ""}]
-        # Преобразуем все Werkzeuge к списку
-        for row in skills_rows:
-            if not isinstance(row.get("Werkzeuge"), list):
-                row["Werkzeuge"] = [row["Werkzeuge"]] if row.get("Werkzeuge") else []
-        skills_edited = st.data_editor(
-            skills_rows,
-            num_rows="dynamic",
-            width="stretch",
-            key="ed_skills_overview_main",
-            column_config={
-                "Kategorie": st.column_config.TextColumn("Kategorie"),
-                "Werkzeuge": st.column_config.ListColumn("Werkzeuge/Technologien"),
-                "Jahre Erfahrung": st.column_config.TextColumn("Jahre Erfahrung")
-            }
-        )
-        edited["skills_overview"] = skills_edited
-
+    # Skills overview
+    if isinstance(edited.get("skills_overview"), list):
+        with st.expander("Kompetenzübersicht (Skills Overview)", expanded=False):
+            skills_rows = edited.get("skills_overview", [])
+            if not isinstance(skills_rows, list):
+                skills_rows = []
+            if not skills_rows:
+                skills_rows = [{"Kategorie": "", "Werkzeuge": [], "Jahre Erfahrung": ""}]
+            # Преобразуем все Werkzeuge к списку
+            for row in skills_rows:
+                if not isinstance(row.get("Werkzeuge"), list):
+                    row["Werkzeuge"] = [row["Werkzeuge"]] if row.get("Werkzeuge") else []
+            skills_edited = st.data_editor(
+                skills_rows,
+                num_rows="dynamic",
+                width="stretch",
+                key="ed_skills_overview_main",
+                column_config={
+                    "Kategorie": st.column_config.TextColumn("Kategorie"),
+                    "Werkzeuge": st.column_config.ListColumn("Werkzeuge/Technologien"),
+                    "Jahre Erfahrung": st.column_config.TextColumn("Jahre Erfahrung")
+                }
+            )
+            edited["skills_overview"] = skills_edited
 
 # --- Sprachen (languages) ---
 if isinstance(edited.get("languages"), list):
