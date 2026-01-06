@@ -1,0 +1,9 @@
+# Local dev настройки, чтобы file_uploader не падал с 403 в некоторых браузерах/вебвью.
+# В проде лучше включить обратно.
+
+[server]
+enableCORS = false
+enableXsrfProtection = false
+
+[browser]
+gatherUsageStats = false

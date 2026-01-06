@@ -1,9 +1,12 @@
 {
   "domains": [
+    "111",
+    "222",
     "Agriculture",
     "Automotive",
     "Banking",
     "Construction",
+    "Consulting",
     "Education",
     "Energy",
     "Finance",
@@ -12,6 +15,7 @@
     "Healthcare",
     "Hospitality",
     "Insurance",
+    "It Services",
     "Logistics",
     "Manufacturing",
     "Media",

@@ -163,14 +163,17 @@ def make_left_box(data, styles):
     header_style = ParagraphStyle("LeftHeader", parent=styles["Heading3"], fontName=BOLD_FONT, spaceAfter=6)
 
     edu = data.get("education", "")
-    # Исправление: если education — список, собрать строки
+    # Поддержка обоих форматов: новый (degree/institution/year) и старый (Institution/Abschluss/Jahr)
     if isinstance(edu, list):
-        edu = "<br/>".join(
-            [
-                " | ".join(str(v) for v in [row.get("Institution"), row.get("Abschluss"), row.get("Jahr")] if v)
-                for row in edu if isinstance(row, dict) and any(row.values())
-            ]
-        )
+        def edu_row_to_str(row):
+            if not isinstance(row, dict):
+                return ""
+            if any(k in row for k in ("degree", "institution", "year")):
+                return " | ".join(str(v) for v in [row.get("degree"), row.get("institution"), row.get("year")] if v)
+            return " | ".join(str(v) for v in [row.get("Institution"), row.get("Abschluss"), row.get("Jahr")] if v)
+        edu = "<br/>".join([
+            edu_row_to_str(row) for row in edu if isinstance(row, dict) and any(row.values())
+        ])
     if edu:
         items += [p("<b>Education:</b>", header_style), p(edu, styles["Normal"]), Spacer(0, 6)]
 
@@ -404,7 +407,7 @@ def make_first_page_section(data, styles):
     return elements
 
 
-# --- Проекты ---
+
 class RoundedCard(Flowable):
     def __init__(self, content, width, padding=20, radius=6,
                  strokeColor=colors.HexColor("#2196F3"),
@@ -417,28 +420,54 @@ class RoundedCard(Flowable):
         self.strokeColor = strokeColor
         self.strokeWidth = strokeWidth
         self.shadow = shadow
+
         self._inner = None
-        self._height = None
+        self._height = 0
+        self._outerW = width  # реальная ширина, используемая в draw()
 
     def wrap(self, availW, availH):
-        innerW = min(self.width, availW) - 2 * self.padding
-        kif = KeepInFrame(innerW, 10_000, self.content, mode="shrink")
-        w, h = kif.wrapOn(self.canv, innerW, availH)
+        # Небольшой epsilon, чтобы гарантированно не превысить ширину фрейма
+        EPS = 1.0
+        border = self.strokeWidth * 2
+
+        # ⬅️ КЛЮЧЕВОЕ: карточка НЕ должна быть шире фрейма (иначе LayoutError)
+        self._outerW = max(1, availW - border - EPS)
+
+        innerW = self._outerW - 2 * self.padding
+        innerW = max(1, innerW)
+
+        innerH = max(1, availH - 2 * self.padding)
+
+        kif = KeepInFrame(innerW, innerH, self.content, mode="shrink")
+        w, h = kif.wrapOn(self.canv, innerW, innerH)
+
+        # KeepInFrame может вернуть 0 высоту для пустого контента — это ломает layout
+        h = max(1, h)
+
         self._inner = kif
-        self._height = h + 2 * self.padding
-        return min(self.width, availW), self._height
+        self._height = max(1, h + 2 * self.padding + border)
+
+        # ⬅️ Возвращаем реальную ширину, которую будем рисовать
+        return self._outerW + border, self._height
 
     def draw(self):
         c = self.canv
-        w, h = self.width, self._height
+
+        # Рисуем ровно то, что посчитали в wrap()
+        w = self._outerW
+        h = self._height
+
         if self.shadow:
             c.setFillColor(colors.HexColor("#cce8ff"))
             c.roundRect(4, -4, w, h, self.radius, stroke=0, fill=1)
+
         c.setStrokeColor(self.strokeColor)
         c.setLineWidth(self.strokeWidth)
         c.setFillColor(colors.white)
         c.roundRect(0, 0, w, h, self.radius, stroke=1, fill=1)
-        self._inner.drawOn(c, self.padding, self.padding)
+
+        if self._inner:
+            self._inner.drawOn(c, self.padding, self.padding)
 
 def make_projects_section(projects, styles):
     if not projects:
@@ -464,12 +493,23 @@ def make_projects_section(projects, styles):
     first_card_done = False
 
     for idx, project in enumerate(projects, 1):
-        title = project.get("project_title", "")
-        role = project.get("role", "")
-        overview = project.get("overview", "")
-        duration = project.get("duration", "")
-        tech_stack = project.get("tech_stack", [])
-        responsibilities = project.get("responsibilities", [])
+        # Нормализация (после редакторов часто прилетает None)
+        title = (project.get("project_title") or "").strip()
+        role = (project.get("role") or "").strip()
+        overview = (project.get("overview") or "").strip()
+        duration = (project.get("duration") or "").strip()
+        tech_stack = project.get("tech_stack") or []
+        responsibilities = project.get("responsibilities") or []
+
+        # Пустой проект пропускаем (иначе карточка может стать вырожденной)
+        has_any = bool(title or role or overview or duration)
+        if not has_any:
+            if isinstance(tech_stack, list) and any(str(x).strip() for x in tech_stack):
+                has_any = True
+            if isinstance(responsibilities, list) and any(str(x).strip() for x in responsibilities):
+                has_any = True
+        if not has_any:
+            continue
 
         pdfmetrics.registerFont(TTFont("Roboto-Italic", "fonts/Roboto-Italic.ttf"))
 
@@ -486,6 +526,13 @@ def make_projects_section(projects, styles):
 
         # --- Responsibilities ---
         resp_items = []
+        if isinstance(responsibilities, list):
+            responsibilities = [str(r).strip() for r in responsibilities if str(r).strip()]
+        elif isinstance(responsibilities, str) and responsibilities.strip():
+            responsibilities = [responsibilities.strip()]
+        else:
+            responsibilities = []
+
         if responsibilities:
             resp_items.append(Paragraph(
                 "Responsibilities:",
@@ -516,6 +563,13 @@ def make_projects_section(projects, styles):
 
         # --- Tech stack (выровнено строго под остальным текстом) ---
         stack_p = None
+        if isinstance(tech_stack, list):
+            tech_stack = [str(t).strip() for t in tech_stack if str(t).strip()]
+        elif isinstance(tech_stack, str) and tech_stack.strip():
+            tech_stack = [tech_stack.strip()]
+        else:
+            tech_stack = []
+
         if tech_stack:
             stack = " · ".join(tech_stack)
             stack_p = Paragraph(
@@ -545,7 +599,7 @@ def make_projects_section(projects, styles):
         # --- Создание округлённой карточки ---
         card = RoundedCard(
             content=card_content,
-            width=170 * mm,
+            width=None,
             padding=20,
             radius=6,
             strokeColor=FIRM_COLOR,

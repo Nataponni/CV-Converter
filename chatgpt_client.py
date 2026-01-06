@@ -31,73 +31,47 @@ def ask_chatgpt(text, mode="details", base_structure=None, model="gpt-5-mini"):
     else:
         task_description = "Extract structured CV data from text and return strictly formatted JSON only."
 
+    import json
+    schema = {
+        "full_name": "",
+        "title": "",
+        "education": [
+            {"degree": "", "institution": "", "year": ""}
+        ],
+        "languages": [{"language": "", "level": ""}],
+        "profile_summary": "",
+        "hard_skills": {
+            "programming_languages": [],
+            "backend": [],
+            "frontend": [],
+            "databases": [],
+            "data_engineering": [],
+            "etl_tools": [],
+            "bi_tools": [],
+            "analytics": [],
+            "cloud_platforms": [],
+            "devops_iac": [],
+            "ci_cd_tools": [],
+            "containers_orchestration": [],
+            "monitoring_security": [],
+            "security": [],
+            "ai_ml_tools": [],
+            "infrastructure_os": [],
+            "other_tools": []
+        },
+        "projects_experience": [],
+        "skills_overview": [],
+        "website": ""
+    }
     prompt = f"""
 TASK: {task_description}
 
 INSTRUCTIONS:
 
-- Extract a complete, structured JSON strictly following the provided SCHEMA.
-- Detect the candidate’s technical specialization (e.g., Cloud, DevOps, BI, Data Engineering) ONLY for descriptive sections such as profile_summary.
-- Determine business domains ONLY in the DOMAINS section, based strictly on the industries of the companies worked for.
-- Avoid assumptions — rely only on what's clearly stated or strongly implied in the resume.
-- If a field is unknown or not present in the CV, use empty values: "" for strings, [] for lists, {{}} for objects. Do NOT guess.
-- Do NOT wrap arrays or objects into strings. Always output proper JSON values.
-- Always extract and include exact start and end dates for every project, job, or education entry.
-- If multiple instructions about "domain" exist, the rules in the === DOMAINS === section take absolute priority.
+- Extract a complete, structured JSON strictly following the provided SCHEMA:
+{json.dumps(schema, ensure_ascii=False, indent=2)}
 
-=== PROJECTS ===
-
-In the "projects_experience" field:
-
-• Extract any block that contains at least a `project_title:` — even if duration is missing.
-  → These blocks are always valid. Extract them even if role, overview, or tech_stack are missing. Fill missing fields with empty values.
-• For each project, extract:
-  - company: Company name ONLY, without city or country (e.g., "Accenture", "Access Bank PLC", "Siemens AG"). Remove location info. If not mentioned, leave empty "".
-  - domains: Array of business industries/sectors of the client/company (e.g., ["Manufacturing"], ["Banking"]).
-    * Use ONLY business industries (Banking, Healthcare, Manufacturing, Retail, E-Commerce, etc.)
-    * FORBIDDEN: Cloud, DevOps, Data Engineering, AI, ML, Big Data (these are technical areas)
-    * Look for mentions like "for a bank", "automotive client", "healthcare provider"
-    * If unclear, use empty array []
-• Preserve the full "duration" exactly as written (e.g., "Jul 2021 – Present"). Do not modify, translate, or guess.
-• Responsibilities: 3–5 bullets, 26–30 words each (target 28).
-  - Focus on MECHANISM (HOW): describe method, tools, approach — NOT results.
-  - Structure: Action verb + specific method/tool + technical context.
-  - Example: "Developed CI/CD pipelines with Azure DevOps YAML using gated approvals, environment-specific variables, and automated rollback mechanisms to control release processes across teams." (27 words)
-  - BAD: "ensuring efficient provisioning" (result) → GOOD: "standardizing provisioning across dev, test, and production" (method)
-  - FORBIDDEN words: comprehensive, robust, effectively, successfully, seamlessly, efficiently, ensuring, enabling, leading to, resulting in.
-  - Use verbs: Architected, Developed, Implemented, Configured, Built, Deployed, Designed.
-  - Don't expand acronyms (use "CI/CD", "ARM").
-  - Include: specific tools, configurations, patterns, methods.
-  - Don't invent metrics.
-• Extract only real, distinct projects. Use visual or semantic separation as an indicator (headings, date blocks, project keywords, client names, etc.).
-• Do not split a single job into multiple projects unless:
-  - It has distinct durations, OR
-  - There is clear formatting separation.
-
-• If multiple roles or tasks are grouped under the same company and duration, treat them as one project.
-• Do not skip projects just because some fields are missing. If it's a valid block (with `Project:` + `title:` + `duration:`), extract it fully with empty fields where needed.
-• All extracted projects must follow the schema strictly.
-
-- NEVER wrap JSON arrays or objects in strings.
-  * For example, do NOT return: "projects_experience": "[{...}]"
-  * Instead, return a proper JSON list: "projects_experience": [{...}]
-- Do NOT return lists as strings. Fields like "projects_experience", "skills_overview", and "languages" must be actual JSON arrays — not strings that look like lists.
-- Always use double quotes for all keys and string values.
-• Each distinct project must become a separate JSON object in the "projects_experience" list.
-• Never merge or combine projects — even if company or technologies overlap.
-• Use clear separators such as '=== PROJECT START ===' or 'Project:' to distinguish them.
-
-
-  === SKILLS ===
-- For "hard_skills" and "skills_overview":
-  * Use ONLY these fixed categories:
-    cloud_platforms, devops_iac, monitoring_security, programming_languages,
-    containers_orchestration, ci_cd_tools, ai_ml_tools, databases,
-    backend, frontend, security, data_engineering, etl_tools, bi_tools,
-    analytics, infrastructure_os, other_tools
-
-  * Do NOT merge or invent new categories like "BI / Analytics" — always split correctly.
-  * Each tool must be placed in only ONE most relevant category.
+...existing code...
   * Tools like "Git", "Excel", "Outlook", "Power Platform" — only use "other_tools" if nothing else fits.
   * Avoid mixing tools in one item (e.g., don't write "Python / SQL" — create separate entries).
 
@@ -154,11 +128,18 @@ In the "projects_experience" field:
   * All fields strictly match the provided SCHEMA.
 - If any rule is violated, regenerate the output until all constraints are satisfied.
 
+
 SCHEMA:
 {{
   "full_name": "",
   "title": "",
-  "education": "",
+  "education": [{
+    {
+      "degree": "",
+      "institution": "",
+      "year": ""
+    }}]
+  ],
   "languages": [{{"language": "", "level": ""}}],
   "profile_summary": "",
   "hard_skills": {{
@@ -201,6 +182,9 @@ SCHEMA:
   ],
   "website": ""
 }}
+
+
+# ВАЖНО: Поле education — это список всех полученных образований. Для каждого образования укажи degree (степень/квалификация), institution (учебное заведение), year (год окончания или период обучения). Если информации нет, оставь поле пустым, но структуру сохраняй.
 
 TEXT:
 {text}

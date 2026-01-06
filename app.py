@@ -1,92 +1,52 @@
 import streamlit as st
 import json, os, tempfile, time
 import threading
-import uuid
+import copy
 import hashlib
+
 from pdf_processor import prepare_cv_text
 from chatgpt_client import ask_chatgpt
-from postprocess import postprocess_filled_cv, normalize_project_domains
+from postprocess import postprocess_filled_cv
 from cv_pdf_generator import create_pretty_first_section
 
-# --- Seiteneinstellungen ---
+# -------------------------
+# Page
+# -------------------------
 st.set_page_config(page_title="CV-Konverter", page_icon="📄")
 st.title("📄 CV-Konverter")
 
-# 1️⃣ Datei-Upload
 uploaded_file = st.file_uploader("Wähle eine PDF-Datei aus", type=["pdf"])
 
-def _stable_hash(obj) -> str:
-    try:
-        s = json.dumps(obj, ensure_ascii=False, sort_keys=True, default=str)
-    except Exception:
-        s = str(obj)
-    return hashlib.md5(s.encode("utf-8")).hexdigest()
 
-def _as_records(x):
-    """Streamlit data_editor может вернуть list[dict] или DataFrame-like."""
-    if x is None:
-        return None
-    if isinstance(x, list):
-        return x
-    if hasattr(x, "to_dict"):
-        try:
-            return x.to_dict(orient="records")
-        except Exception:
-            return None
-    return None
-
-
+# -------------------------
+# Helpers
+# -------------------------
 def _norm_list(x):
-    """Нормализует значения, которые должны быть list[str]."""
+    """Normalize values that should be list[str]."""
     if x is None:
         return []
     if isinstance(x, list):
         return [str(v).strip() for v in x if str(v).strip()]
     if isinstance(x, str):
-        # на случай если Streamlit/JSON превратил список в строку
         parts = [p.strip() for p in x.split(",")]
         return [p for p in parts if p]
     s = str(x).strip()
     return [s] if s else []
 
 
-def _norm_domains(x):
-    """Нормализуем домены и приводим к TitleCase."""
-    return [d.strip().title() for d in _norm_list(x) if d and str(d).strip()]
-
-
-def _domains_to_text(domains):
-    """Список доменов -> строка через запятую для редактирования в таблице."""
-    return ", ".join(_norm_list(domains))
-
-
-def _domains_from_text(text):
-    """Строка -> уникальный список доменов (title case)."""
-    seen = set()
-    out = []
-    for d in _norm_domains(text):
-        if d not in seen:
-            seen.add(d)
-            out.append(d)
-    return out
-
-
 def _load_domains_config() -> list[str]:
-    """Загружает предустановленные домены из domains.json и нормализует их."""
     config_file = "domains.json"
     if os.path.exists(config_file):
         try:
             with open(config_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # Нормализуем в TitleCase, как остальные домены
-                return sorted(set(d.strip().title() for d in data.get("domains", []) if d.strip()))
+                return sorted(set(d.strip().title() for d in data.get("domains", []) if str(d).strip()))
         except Exception as e:
             print(f"Ошибка при загрузке доменов: {e}")
     return []
 
 
 def _save_domains_config(domains: list) -> bool:
-    """Сохраняет обновленный список доменов в domains.json."""
     config_file = "domains.json"
     try:
         with open(config_file, "w", encoding="utf-8") as f:
@@ -97,157 +57,297 @@ def _save_domains_config(domains: list) -> bool:
         return False
 
 
-def _collect_project_domains_only(projects: list) -> list[str]:
-    """Собирает ТОЛЬКО домены из проектов (без конфига)."""
+def _stable_dumps(obj) -> str:
+    return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _fingerprint(obj) -> str:
+    return hashlib.sha256(_stable_dumps(obj).encode("utf-8")).hexdigest()
+
+
+def _project_has_content(p: dict) -> bool:
+    if not isinstance(p, dict):
+        return False
+    keys = [
+        "project_title",
+        "company",
+        "role",
+        "overview",
+        "duration",
+        "tech_stack",
+        "responsibilities",
+        "domains",
+    ]
+    for k in keys:
+        v = p.get(k)
+        if isinstance(v, list):
+            if any(str(x).strip() for x in v if x is not None):
+                return True
+        elif v is not None and str(v).strip():
+            return True
+    return False
+
+
+def _extract_domains_from_projects(rows: list[dict]) -> list[str]:
     out = set()
-    for p in projects or []:
-        if isinstance(p, dict):
-            for d in _norm_list(p.get("domains")):
-                if d:
-                    out.add(d)
+    for p in rows if isinstance(rows, list) else []:
+        if not isinstance(p, dict):
+            continue
+        for d in _norm_list(p.get("domains")):
+            dd = str(d).strip()
+            if dd:
+                out.add(dd.title())
     return sorted(out)
 
 
-def _projects_to_display(projects: list) -> list:
-    """Подготовка проектов для data_editor: оставляем domains как список, добавляем company."""
-    display = []
-    for p in projects or []:
-        if isinstance(p, dict):
-            row = dict(p)
-            # Оставляем domains как список для отображения тегами
-            row["domains"] = _norm_domains(row.get("domains", []))
-            # Убеждаемся что company есть
-            if "company" not in row:
-                row["company"] = ""
-            display.append(row)
-        else:
-            display.append(p)
-    return display
+def _extract_companies_from_projects(rows: list[dict]) -> list[str]:
+    out = set()
+    for p in rows if isinstance(rows, list) else []:
+        if not isinstance(p, dict):
+            continue
+        c = str(p.get("company", "") or "").strip()
+        if c:
+            out.add(c)
+    return sorted(out)
 
 
-def _projects_from_display(rows: list) -> list:
-    """Обратное преобразование после data_editor: нормализуем domains.
-    Автоматически сохраняет новые домены в domains.json."""
-    restored = []
-    new_domains = set()
-    for row in rows or []:
-        if isinstance(row, dict):
-            r = dict(row)
-            # domains уже список, просто нормализуем
-            domains_list = _norm_domains(r.get("domains", []))
-            r["domains"] = domains_list
-            new_domains.update(domains_list)
-            restored.append(r)
-        else:
-            restored.append(row)
-    
-    # Обновляем конфиг, если появились новые домены
-    existing_domains = set(_load_domains_config())
-    if new_domains - existing_domains:
-        all_domains = existing_domains | new_domains
-        _save_domains_config(list(all_domains))
-    
-    return restored
+def _filter_projects_by_domains(rows: list[dict], selected_domains: list[str]) -> list[dict]:
+    sel = {str(d).strip().casefold() for d in (selected_domains or []) if str(d).strip()}
+    if not sel:
+        return list(rows) if isinstance(rows, list) else []
+    out = []
+    for p in rows if isinstance(rows, list) else []:
+        if not isinstance(p, dict):
+            continue
+        p_domains = {str(d).strip().casefold() for d in _norm_list(p.get("domains")) if str(d).strip()}
+        if p_domains & sel:
+            out.append(p)
+    return out
 
-def is_new_candidate(uploaded_file):
+
+def is_new_candidate(uploaded_file) -> bool:
     if not uploaded_file:
         return False
     last_file = st.session_state.get("last_uploaded_file_name", None)
     return uploaded_file.name != last_file
 
+
+def _remove_empty_fields(x):
+    if isinstance(x, dict):
+        out = {}
+        for k, v in x.items():
+            vv = _remove_empty_fields(v)
+            if vv in (None, "", [], {}):
+                continue
+            out[k] = vv
+        return out
+    if isinstance(x, list):
+        out = []
+        for it in x:
+            vv = _remove_empty_fields(it)
+            if vv in (None, "", [], {}):
+                continue
+            out.append(vv)
+        return out
+    return x
+
+
+def languages_to_pdf_format(rows):
+    """Return list of {language, level}."""
+    out = []
+    for r in rows if isinstance(rows, list) else []:
+        if not isinstance(r, dict):
+            continue
+        if "Sprache" in r or "Niveau" in r:
+            out.append({"language": str(r.get("Sprache", "")).strip(), "level": str(r.get("Niveau", "")).strip()})
+        else:
+            out.append({"language": str(r.get("language", "")).strip(), "level": str(r.get("level", "")).strip()})
+    return out
+
+
+def ensure_edited_json_initialized():
+    """Guarantee a single source-of-truth draft for UI edits."""
+    if "filled_json" in st.session_state and isinstance(st.session_state["filled_json"], dict):
+        if "edited_json" not in st.session_state or not isinstance(st.session_state["edited_json"], dict):
+            st.session_state["edited_json"] = copy.deepcopy(st.session_state["filled_json"])
+
+
+# -------------------------
+# Data-editor safe state pattern
+# -------------------------
+def _ensure_data_rows(data_key: str, initial_rows: list[dict]) -> list[dict]:
+    """
+    Store editor DATA (list[dict]) under a dedicated data_key.
+    Never store list[dict] in the widget key itself.
+    """
+    v = st.session_state.get(data_key, None)
+    if isinstance(v, list) and all(isinstance(r, dict) for r in v):
+        return v
+    st.session_state[data_key] = copy.deepcopy(initial_rows)
+    return st.session_state[data_key]
+
+
+def _reset_editor_widget_key_if_corrupt(widget_key: str):
+    """
+    Streamlit keeps INTERNAL widget state in st.session_state[widget_key] (dict).
+    If something else is there -> editor can crash. We only delete corrupt values.
+    """
+    v = st.session_state.get(widget_key, None)
+    if v is None:
+        return
+    if not isinstance(v, dict):
+        st.session_state.pop(widget_key, None)
+
+
+def _apply_data_editor_deltas(widget_key: str, rows: list[dict]) -> list[dict]:
+    """Apply st.data_editor internal deltas from st.session_state[widget_key] onto rows.
+
+    This helps capture edits that haven't been committed into the returned DataFrame/list yet.
+    Works best for simple list[dict] tables.
+    """
+    state = st.session_state.get(widget_key)
+    if not isinstance(state, dict):
+        return rows
+
+    out = [dict(r) for r in (rows if isinstance(rows, list) else []) if isinstance(r, dict)]
+
+    deleted = state.get("deleted_rows")
+    if isinstance(deleted, list) and deleted:
+        # delete highest indices first
+        for idx in sorted([i for i in deleted if isinstance(i, int)], reverse=True):
+            if 0 <= idx < len(out):
+                out.pop(idx)
+
+    edited = state.get("edited_rows")
+    if isinstance(edited, dict):
+        for idx_str, patch in edited.items():
+            try:
+                idx = int(idx_str)
+            except Exception:
+                continue
+            if 0 <= idx < len(out) and isinstance(patch, dict):
+                out[idx].update(patch)
+
+    added = state.get("added_rows")
+    if isinstance(added, list) and added:
+        for r in added:
+            if isinstance(r, dict):
+                out.append(dict(r))
+
+    return out
+
+
+# -------------------------
+# Clear candidate data
+# -------------------------
 def clear_candidate_data():
-    keys_to_clear = [        
+    keys_to_clear = [
+        # core
         "filled_json",
+        "edited_json",
         "json_bytes",
         "pdf_bytes",
         "pdf_name",
         "raw_text",
         "pdf_path",
-        "projects_experience",
-        "profile_summary",
-        "v3_summary_text",
-        "v3_summary_area",
-        "projects_experience_full",
-        "projects_editor_ver",
-        "project_domains_filter",
+        "pdf_needs_refresh",
+        # project filters
+        "filtered_projects_for_pdf",
+        "selected_domains_for_pdf",
+        "project_domains_filter_main",
+        "pdf_domains_list",
+        "pdf_companies_list",
+        "computed_domains_text_filtered_ui",
+        "computed_companies_text_filtered_ui",
+        "pdf_filter_sel",
+        # UI widgets for basic fields
+        "w_full_name", "w_first_name", "w_title", "w_profile_summary",
+        # model
+        "selected_model", "model_label",
+        # ---- editor DATA keys (our source of truth)
+        "DATA_projects_rows",
+        "DATA_hard_skills_rows",
+        "DATA_skills_overview_rows",
+        "DATA_languages_rows",
+        "DATA_education_rows",
+        # ---- editor WIDGET keys (internal widget state)
+        "W_projects_editor",
+        "W_hard_skills_editor",
+        "W_skills_overview_editor",
+        "W_languages_editor",
+        "W_education_editor",
     ]
+
+    # also clear dynamic contact keys
+    for k in list(st.session_state.keys()):
+        if k.startswith("w_contacts_"):
+            keys_to_clear.append(k)
+
     for key in keys_to_clear:
         st.session_state.pop(key, None)
 
+
+# -------------------------
+# Upload + Convert
+# -------------------------
 if uploaded_file:
-    # Очистка всех данных, если загружен новый кандидат
     if is_new_candidate(uploaded_file):
         clear_candidate_data()
         st.session_state["last_uploaded_file_name"] = uploaded_file.name
+        st.session_state["pdf_needs_refresh"] = False
 
-    # Сохраняем PDF во временный файл
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         pdf_path = tmp.name
+
     st.success(f"✅ Datei hochgeladen: {uploaded_file.name}")
 
-    # --- Session-State Initialisierung (обязательно) ---
     st.session_state.setdefault("selected_model", "gpt-4o-mini")
-
-    # --- Modell-Auswahl ---
     MODEL_OPTIONS = {
         "Schnell (geringere Qualität)": "gpt-4o-mini",
-        "Langsamer (Genauer)": "gpt-5-mini"
+        "Langsamer (Genauer)": "gpt-5-mini",
     }
-
-    st.radio(
-        "Modell auswählen",
-        options=list(MODEL_OPTIONS.keys()),
-        key="model_label"
-    )
+    st.radio("Modell auswählen", options=list(MODEL_OPTIONS.keys()), key="model_label")
     st.session_state["selected_model"] = MODEL_OPTIONS[st.session_state["model_label"]]
 
-    # 2️⃣ Konvertierung starten
     if st.button("🚀 Konvertierung starten"):
-        # Sichtbare, persistente Status-Komponenten
         progress_box = st.container()
         with progress_box:
             progress = st.progress(1)
+
         progress_value = 1
         status_text = st.empty()
         time_info = st.empty()
         start_time = time.time()
 
         try:
-            # --- Schritt 1: Text extrahieren ---
             status_text.text("📖 Text wird extrahiert…")
             prepared_text, raw_text = prepare_cv_text(pdf_path)
             st.session_state["raw_text"] = raw_text
-            st.session_state["pdf_path"] = pdf_path  # (для восстановления при повторном использовании)
+            st.session_state["pdf_path"] = pdf_path
 
             for i in range(1, 26, 2):
-                time.sleep(0.1)
+                time.sleep(0.05)
                 progress.progress(i)
                 progress_value = i
                 time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
 
-            # --- Schritt 2: Anfrage an ChatGPT ---
             status_text.text("🤖 Anfrage wird an ChatGPT gesendet…")
             holder = {"value": None, "error": None}
-            # 👇 ВАЖНО: копируем значение ДО thread
             selected_model = st.session_state["selected_model"]
 
             def _run_gpt():
-                holder["value"] = ask_chatgpt(
-                    prepared_text,
-                    mode="details",
-                    model=selected_model  # ✅ безопасно
-                )
+                try:
+                    holder["value"] = ask_chatgpt(prepared_text, mode="details", model=selected_model)
+                except Exception as e:
+                    holder["error"] = e
 
             t = threading.Thread(target=_run_gpt, daemon=True)
             t.start()
 
-            anim_start = time.time()
-            # animate progress between 5..95 while waiting
             with st.spinner("Modell arbeitet…"):
                 while t.is_alive():
                     elapsed = time.time() - start_time
-                    # Monotones Fortschreiten bis max. 95%
                     progress_value = min(progress_value + 1, 95)
                     progress.progress(progress_value)
                     time_info.text(f"⏱ {round(elapsed, 1)} Sekunden vergangen")
@@ -255,447 +355,599 @@ if uploaded_file:
 
             if holder.get("error"):
                 raise holder["error"]
-            result = holder.get("value")
 
+            result = holder.get("value") or {}
 
-            # --- Schritt 3: JSON verarbeiten ---
             if "raw_response" in result and result["raw_response"]:
                 status_text.text("🧩 Daten werden verarbeitet…")
                 filled_json = json.loads(result["raw_response"])
                 filled_json = postprocess_filled_cv(filled_json, raw_text)
 
-                # 💾 Автоматически сохраняем все вычисленные данные сразу
+                if not filled_json.get("title"):
+                    filled_json["title"] = filled_json.get("position") or filled_json.get("role") or ""
+
                 st.session_state["filled_json"] = filled_json
-                st.session_state["json_bytes"] = json.dumps(
-                    filled_json, indent=2, ensure_ascii=False
-                ).encode("utf-8")
+                st.session_state["edited_json"] = copy.deepcopy(filled_json)
+                st.session_state["json_bytes"] = json.dumps(filled_json, indent=2, ensure_ascii=False).encode("utf-8")
 
                 for i in range(56, 76, 2):
-                    time.sleep(0.15)
-                    progress.progress(i)
-                    progress_value = i
-                    time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
-
-                # --- Schritt 4: PDF генерировать (einразик) ---
-                status_text.text("📝 PDF wird erstellt…")
-                output_dir = "data_output"
-                os.makedirs(output_dir, exist_ok=True)
-
-                # Нормализация должности в ключ 'title'
-                if not filled_json.get("title"):
-                    filled_json["title"] = (
-                        filled_json.get("position")
-                        or filled_json.get("role")
-                        or ""
-                    )
-
-                for i in range(76, 96, 2):
                     time.sleep(0.05)
                     progress.progress(i)
                     progress_value = i
                     time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
 
-                # --- Automatische Benennung des Dokuments ---
-                full_name = filled_json.get("full_name", "").strip()
-                position = (
-                    filled_json.get("title")
-                    or filled_json.get("position")
-                    or filled_json.get("role")
-                    or ""
-                ).strip()
-
-                first_name = full_name.split(" ")[0].title() if full_name else "Unbekannt"
-                position = position.title() if position else "Unbekannte Position"
-                pdf_name = f"CV Inpro {first_name} {position}"
-
-                # --- PDF генерировать с правильным именем ---
+                status_text.text("📝 PDF wird erstellt…")
                 output_dir = "data_output"
                 os.makedirs(output_dir, exist_ok=True)
-                pdf_path = create_pretty_first_section(
-                    filled_json, output_dir=output_dir, prefix=pdf_name
-                )
 
-                with open(pdf_path, "rb") as f:
-                    pdf_bytes = f.read()
+                full_name = str(filled_json.get("full_name", "")).strip()
+                position = str(filled_json.get("title") or filled_json.get("position") or filled_json.get("role") or "").strip()
 
-                st.session_state["pdf_bytes"] = pdf_bytes
+                first_name = full_name.split(" ")[0].title() if full_name else "Unbekannt"
+                position_tc = position.title() if position else "Unbekannte Position"
+                pdf_name = f"CV Inpro {first_name} {position_tc}"
+
+                for i in range(76, 96, 2):
+                    time.sleep(0.03)
+                    progress.progress(i)
+                    progress_value = i
+                    time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
+
+                pdf_path_out = create_pretty_first_section(filled_json, output_dir=output_dir, prefix=pdf_name)
+                with open(pdf_path_out, "rb") as f:
+                    st.session_state["pdf_bytes"] = f.read()
+
                 st.session_state["pdf_name"] = pdf_name
-
+                st.session_state["last_pdf_fingerprint"] = _fingerprint(_remove_empty_fields(filled_json))
+                st.session_state["pdf_needs_refresh"] = False
+                progress.progress(100)
             else:
                 st.error("⚠️ Das Modell hat keine Daten zurückgegeben.")
-
         except Exception as e:
             st.error(f"❌ Fehler bei der Verarbeitung: {e}")
 
-# 3️⃣ Downloadbereich
-if "filled_json" in st.session_state:
+
+# -------------------------
+# Editors
+# -------------------------
+if "filled_json" in st.session_state and isinstance(st.session_state["filled_json"], dict):
+    ensure_edited_json_initialized()
+    edited = st.session_state["edited_json"]
+
     st.markdown("---")
     st.subheader("🛠 Manuelle Bearbeitung")
 
-    # Создаем редактируемую копию
-    edited = dict(st.session_state["filled_json"]) if isinstance(st.session_state["filled_json"], dict) else {}
-    # Нормализация ключа languages, чтобы редактор всегда отображался
-    if not isinstance(edited.get("languages"), list):
-        if isinstance(edited.get("languages"), str) and edited["languages"].strip():
-            edited["languages"] = []  # можно попытаться разобрать, но лучше явно пустой список
-        else:
-            edited["languages"] = []
+    # --- Basic fields ---
+    st.session_state.setdefault("w_full_name", str(edited.get("full_name", "")))
+    st.session_state.setdefault("w_first_name", str(edited.get("first_name", "")))
+    current_title = str(edited.get("title") or edited.get("position") or edited.get("role") or "")
+    st.session_state.setdefault("w_title", current_title)
+    st.session_state.setdefault("w_profile_summary", str(edited.get("profile_summary", edited.get("summary", ""))))
 
-    # Основные поля
+    # Basic fields
     col_a, col_b = st.columns(2)
     with col_a:
-        if "full_name" in edited:
-            edited["full_name"] = st.text_input("Vollständiger Name", value=str(edited.get("full_name", "")), key="full_name")
-        if "first_name" in edited:
-            edited["first_name"] = st.text_input("Vorname", value=str(edited.get("first_name", "")), key="first_name")
+        st.text_input("Vollständiger Name", key="w_full_name")
+        st.text_input("Vorname", key="w_first_name")
     with col_b:
-        # Единый ключ: title
-        if "title" in edited or any(k in edited for k in ["position", "role"]):
-            current_title = str(edited.get("title") or edited.get("position") or edited.get("role") or "")
-            edited["title"] = st.text_input("Position (title)", value=current_title, key="title")
+        st.text_input("Position (title)", key="w_title")
 
-    # Контакты (dict)
+    st.text_area("Kurzbeschreibung (profile_summary)", height=140, key="w_profile_summary")
+
+    edited["full_name"] = st.session_state["w_full_name"]
+    edited["first_name"] = st.session_state["w_first_name"]
+    edited["title"] = st.session_state["w_title"]
+    edited["profile_summary"] = st.session_state["w_profile_summary"]
+
+    # Contacts
     if isinstance(edited.get("contacts"), dict):
         with st.expander("Kontakte", expanded=False):
             contacts = dict(edited.get("contacts", {}))
             for k, v in contacts.items():
-                contacts[k] = st.text_input(f"{k}", value=str(v), key=f"contacts_{k}")
+                wkey = f"w_contacts_{k}"
+                st.session_state.setdefault(wkey, str(v))
+                st.text_input(str(k), key=wkey)
+                contacts[k] = st.session_state[wkey]
             edited["contacts"] = contacts
 
-    # Короткое описание / Summary
-    if "profile_summary" in edited:
-        edited["profile_summary"] = st.text_area("Kurzbeschreibung (profile_summary)", value=str(edited.get("profile_summary", "")), height=140, key="profile_summary")
-    else:
-        for summary_key in ["summary", "about", "profile"]:
-            if summary_key in edited:
-                edited[summary_key] = st.text_area("Kurzbeschreibung", value=str(edited.get(summary_key, "")), height=140, key=f"{summary_key}")
-                break
-    # Опыт / Проекты (list[dict]) — основной ключ: projects_experience
-    if isinstance(edited.get("projects_experience"), list):
-        # --- Всегда обновляем computed_domains после редактирования проектов ---
-        projects_full = edited.get("projects_experience", [])
-        project_domains = set(
-            d.strip().title()
-            for p in projects_full
-            if isinstance(p, dict)
-            for d in _norm_list(p.get("domains"))
-            if str(d).strip()
-        )
-        config_domains = set(_load_domains_config())
-        computed_domains = sorted(config_domains | project_domains)
-        st.session_state["computed_domains"] = computed_domains
-        edited["computed_domains"] = computed_domains
-
-    # --- Удалено старое поле доменов, теперь актуальное поле только под проектами ---
-
+    # Projects
     with st.expander("Projekte / Erfahrung (projects_experience)", expanded=True):
+        W_PROJECTS = "W_projects_editor"
+        DATA_PROJECTS = "DATA_projects_rows"
 
-        if st.button("🪄 Domains автоматически erkennen", key="btn_autofill_project_domains_main"):
-            new_domains = set()
-            for p in st.session_state.get("projects_experience_full", []):
-                if isinstance(p, dict):
-                    for d in _norm_list(p.get("domains")):
-                        if d:
-                            new_domains.add(d.strip().title())
-            config_domains = set(_load_domains_config())
-            _save_domains_config(sorted(config_domains | new_domains))
-            st.success("Domänen wurden автоматиш erkannt и сохранены.")
+        _reset_editor_widget_key_if_corrupt(W_PROJECTS)
 
-        # init source-of-truth once
-        if "projects_experience_full" not in st.session_state or not isinstance(st.session_state["projects_experience_full"], list):
-            st.session_state["projects_experience_full"] = edited.get("projects_experience", []) if isinstance(edited.get("projects_experience"), list) else []
+        base = edited.get("projects_experience", [])
+        if not isinstance(base, list):
+            base = []
 
-        projects_full = st.session_state["projects_experience_full"]
-
-        # display projects
-        display_projects = []
-        for p in projects_full:
-            if isinstance(p, dict):
-                p2 = dict(p)
-                p2.pop("__pid", None)
-                display_projects.append(p2)
-            else:
-                display_projects.append(p)
-
-        # editor (stable key!)
-        projects_edited = st.data_editor(
-            display_projects,
-            num_rows="dynamic",
-            width="stretch",
-            key="ed_projects_experience_main"
-        )
-
-        # persist edits
-        st.session_state["projects_experience_full"] = projects_edited
-        edited["projects_experience"] = projects_edited
-
-        # 1) Собираем домены для фильтра (как есть, без .title())
-        all_domains = sorted({
-            str(d).strip()
-            for p in projects_edited if isinstance(p, dict)
-            for d in _norm_list(p.get("domains"))
-            if str(d).strip()
-        })
-
-        selected_domains = st.multiselect(
-            "Filter nach Domänen",
-            options=all_domains,
-            default=[],
-            key="project_domains_filter_main"
-        )
-
-        # 2) Фильтруем проекты без учёта регистра
-        if selected_domains:
-            active = {d.strip().casefold() for d in selected_domains}
-
-            filtered_projects = []
-            for p in projects_edited:
-                if not isinstance(p, dict):
-                    continue
-                project_domains = {d.strip().casefold() for d in _norm_list(p.get("domains"))}
-                if project_domains & active:
-                    filtered_projects.append(p)
-        else:
-            filtered_projects = projects_edited
-
-        # store for footer button (PDF)
-        st.session_state["filtered_projects_for_pdf"] = filtered_projects
-        st.session_state["selected_domains_for_pdf"] = selected_domains
-
-
-        # 3) Domains из отфильтрованных проектов
-        domains_out = sorted({
-            str(d).strip()
-            for p in filtered_projects if isinstance(p, dict)
-            for d in _norm_list(p.get("domains"))
-            if str(d).strip()
-        })
-
-        # 4) Companies/Firmen из отфильтрованных проектов
-        companies_out = sorted({
-            str(p.get("company", "")).strip()
-            for p in filtered_projects
-            if isinstance(p, dict) and str(p.get("company", "")).strip()
-        })
-      
-        # 5) Сохраняем списки для PDF (именно списки, не строки)
-        st.session_state["pdf_domains_list"] = domains_out
-        st.session_state["pdf_companies_list"] = companies_out
-
-        # 6) UI: ключи виджетов (ВАЖНО: state обновляем по этим ключам)
-        DOMAINS_UI_KEY = "computed_domains_text_filtered_ui"
-        COMPANIES_UI_KEY = "computed_companies_text_filtered_ui"
-
-        st.session_state[DOMAINS_UI_KEY] = ", ".join(domains_out)
-        st.session_state[COMPANIES_UI_KEY] = ", ".join(companies_out)
-
-        # 7) Выводим поля ОДИН раз (без value=, иначе может не обновляться)
-        st.text_area("Domains", height=60, disabled=True, key=DOMAINS_UI_KEY)
-        st.text_area("Firmen",  height=60, disabled=True, key=COMPANIES_UI_KEY)
-
-        # 8) Флаг обновления PDF при изменении фильтра
-        st.session_state.setdefault("pdf_needs_refresh", False)
-        current_sel = tuple(sorted([s.strip().casefold() for s in selected_domains]))
-        if st.session_state.get("pdf_filter_sel") != current_sel:
-            st.session_state["pdf_filter_sel"] = current_sel
-            st.session_state["pdf_needs_refresh"] = True
-
-# Hard Skills и Skills overview
-if "filled_json" in st.session_state:
-    edited = dict(st.session_state["filled_json"]) if isinstance(st.session_state["filled_json"], dict) else {}
-
-    # Hard Skills
-    if isinstance(edited.get("hard_skills"), dict):
-        with st.expander("Fachliche Kompetenzen (Hard Skills)", expanded=False):
-            hard_skills_list = [
-                {"Kategorie": k, "Werkzeuge": v if isinstance(v, list) else [v]}
-                for k, v in edited["hard_skills"].items()
-            ]
-            hard_skills_edited = st.data_editor(
-                hard_skills_list,
-                num_rows="dynamic",
-                width="stretch",
-                key="ed_hard_skills",
-                column_config={
-                    "Kategorie": st.column_config.TextColumn("Kategorie"),
-                    "Werkzeuge": st.column_config.ListColumn("Werkzeuge/Technologien")
+        def _project_row_to_ui(p: dict) -> dict:
+            if not isinstance(p, dict):
+                return {
+                    "project_title": "",
+                    "company": "",
+                    "overview": "",
+                    "role": "",
+                    "duration": "",
+                    "responsibilities": "",
+                    "tech_stack": [],
+                    "domains": [],
                 }
-            )
-            edited["hard_skills"] = {
-                row["Kategorie"]: row["Werkzeuge"]
-                for row in hard_skills_edited if row.get("Kategorie")
+            return {
+                "project_title": str(p.get("project_title", "") or ""),
+                "company": str(p.get("company", "") or ""),
+                "overview": str(p.get("overview", "") or ""),
+                "role": str(p.get("role", "") or ""),
+                "duration": str(p.get("duration", "") or ""),
+                "responsibilities": str(p.get("responsibilities", "") or ""),
+                "tech_stack": _norm_list(p.get("tech_stack")),
+                "domains": _norm_list(p.get("domains")),
             }
 
-    # Skills overview
-    if isinstance(edited.get("skills_overview"), list):
-        with st.expander("Kompetenzübersicht (Skills Overview)", expanded=False):
-            skills_rows = edited.get("skills_overview", [])
-            if not isinstance(skills_rows, list):
-                skills_rows = []
-            if not skills_rows:
-                skills_rows = [{"Kategorie": "", "Werkzeuge": [], "Jahre Erfahrung": ""}]
-            # Преобразуем все Werkzeuge к списку
-            for row in skills_rows:
-                if not isinstance(row.get("Werkzeuge"), list):
-                    row["Werkzeuge"] = [row["Werkzeuge"]] if row.get("Werkzeuge") else []
-            skills_edited = st.data_editor(
-                skills_rows,
+        initial_projects = [_project_row_to_ui(p) for p in base if isinstance(p, dict)]
+        if not initial_projects:
+            initial_projects = [_project_row_to_ui({})]
+
+        projects_rows = _ensure_data_rows(DATA_PROJECTS, initial_projects)
+        projects_rows = [_project_row_to_ui(r) for r in projects_rows if isinstance(r, dict)]
+        if not projects_rows:
+            projects_rows = [_project_row_to_ui({})]
+        st.session_state[DATA_PROJECTS] = projects_rows
+
+        projects_edited = st.data_editor(
+            st.session_state[DATA_PROJECTS],
+            num_rows="dynamic",
+            width="stretch",
+            hide_index=True,
+            key=W_PROJECTS,
+            column_config={
+                "project_title": st.column_config.TextColumn("Projekt"),
+                "company": st.column_config.TextColumn("Firma"),
+                "overview": st.column_config.TextColumn("Überblick"),
+                "role": st.column_config.TextColumn("Rolle"),
+                "duration": st.column_config.TextColumn("Dauer"),
+                "responsibilities": st.column_config.TextColumn("Responsibilities"),
+                "tech_stack": st.column_config.ListColumn("Tech Stack"),
+                "domains": st.column_config.ListColumn("Domains"),
+            },
+        )
+
+        # Normalize rows, then apply any pending deltas so edits are not lost on a direct button click.
+        normalized_now = [_project_row_to_ui(r) for r in projects_edited if isinstance(r, dict)]
+        merged_now = _apply_data_editor_deltas(W_PROJECTS, normalized_now)
+        merged_now = [_project_row_to_ui(r) for r in merged_now if isinstance(r, dict)]
+        st.session_state[DATA_PROJECTS] = merged_now
+        edited["projects_experience"] = merged_now
+
+        def _autofill_domains_from_projects():
+            rows = st.session_state.get(DATA_PROJECTS, [])
+            new_domains = set()
+            for p in rows:
+                if not isinstance(p, dict):
+                    continue
+                for d in _norm_list(p.get("domains")):
+                    if d:
+                        new_domains.add(d.strip().title())
+            config_domains = set(_load_domains_config())
+            _save_domains_config(sorted(config_domains | new_domains))
+
+        st.button(
+            "🪄 Domänen automatisch erkennen",
+            key="btn_autofill_project_domains_main",
+            on_click=_autofill_domains_from_projects,
+        )
+
+    # PDF Domains filter: show only domains that exist in current projects (not from domains.json)
+    projects_for_filter = st.session_state.get("DATA_projects_rows", [])
+    domains_options = _extract_domains_from_projects(projects_for_filter)
+    prior_sel = st.session_state.get("selected_domains_for_pdf", [])
+    safe_default = [d for d in prior_sel if d in domains_options]
+    selected_domains = st.multiselect(
+        "Domains-Filter (für PDF)",
+        options=domains_options,
+        default=safe_default,
+        key="selected_domains_for_pdf",
+    )
+
+    with st.container():
+        current_sel = tuple(sorted([s.strip().casefold() for s in selected_domains]))
+        st.session_state["pdf_filter_sel"] = current_sel
+
+        # compute filtered projects + lists used by PDF preview
+        all_projects_now = [p for p in projects_for_filter if _project_has_content(p)]
+        selected_domains_list = list(selected_domains or [])
+        filtered_projects = _filter_projects_by_domains(all_projects_now, selected_domains_list)
+        st.session_state["filtered_projects_for_pdf"] = filtered_projects
+
+        # If we are NOT filtering (no domains selected), treat it as "select all projects" and
+        # also auto-fill domains/companies lists from ALL projects.
+        if not selected_domains_list:
+            st.session_state["pdf_domains_list"] = _extract_domains_from_projects(all_projects_now)
+            st.session_state["pdf_companies_list"] = _extract_companies_from_projects(all_projects_now)
+        else:
+            st.session_state["pdf_domains_list"] = selected_domains_list
+            st.session_state["pdf_companies_list"] = _extract_companies_from_projects(filtered_projects)
+
+        # Show the (filtered) domain/company lists again (for copying / visibility)
+        st.session_state["computed_domains_text_filtered_ui"] = "\n".join(
+            [str(d) for d in (st.session_state.get("pdf_domains_list", []) or []) if str(d).strip()]
+        )
+        st.session_state["computed_companies_text_filtered_ui"] = "\n".join(
+            [str(c) for c in (st.session_state.get("pdf_companies_list", []) or []) if str(c).strip()]
+        )
+        col_dom, col_comp = st.columns(2)
+        with col_dom:
+            st.text_area(
+                "Domänen (für PDF)",
+                key="computed_domains_text_filtered_ui",
+                height=110,
+                disabled=True,
+            )
+        with col_comp:
+            st.text_area(
+                "Firmen (aus gefilterten Projekten)",
+                key="computed_companies_text_filtered_ui",
+                height=110,
+                disabled=True,
+            )
+
+        # true/false unsaved state based on actual PDF preview content
+        pdf_preview = copy.deepcopy(edited)
+        pdf_preview["projects_experience"] = filtered_projects
+        pdf_preview["domains"] = st.session_state.get("pdf_domains_list", [])
+        pdf_preview["companies"] = st.session_state.get("pdf_companies_list", [])
+        current_fp = _fingerprint(_remove_empty_fields(pdf_preview))
+        last_fp = st.session_state.get("last_pdf_fingerprint")
+        if last_fp is None:
+            st.session_state["last_pdf_fingerprint"] = current_fp
+            st.session_state["pdf_needs_refresh"] = False
+        else:
+            st.session_state["pdf_needs_refresh"] = (current_fp != last_fp)
+
+        # -------------------------
+        # Hard Skills
+        # -------------------------
+        with st.expander("Fachliche Kompetenzen (Hard Skills)", expanded=False):
+            W_HS = "W_hard_skills_editor"
+            DATA_HS = "DATA_hard_skills_rows"
+
+            _reset_editor_widget_key_if_corrupt(W_HS)
+
+            hs = edited.get("hard_skills", {})
+            if not isinstance(hs, dict):
+                hs = {}
+
+            initial_rows = []
+            for k, v in hs.items():
+                tools = v if isinstance(v, list) else ([v] if v else [])
+                initial_rows.append({"Kategorie": str(k), "Werkzeuge": [str(x).strip() for x in tools if str(x).strip()]})
+
+            if not initial_rows:
+                initial_rows = [{"Kategorie": "", "Werkzeuge": []}]
+
+            def _hard_skills_row_to_ui(row: dict) -> dict:
+                if not isinstance(row, dict):
+                    return {"Kategorie": "", "Werkzeuge": []}
+                cat = row.get("Kategorie", "") or row.get("category", "") or ""
+                tools = row.get("Werkzeuge", None)
+                if tools is None:
+                    tools = row.get("tools", [])
+                tools_list = tools if isinstance(tools, list) else _norm_list(tools)
+                tools_list = [str(t).strip() for t in tools_list if str(t).strip()]
+                return {"Kategorie": str(cat or ""), "Werkzeuge": tools_list}
+
+            hs_rows = _ensure_data_rows(DATA_HS, initial_rows)
+            hs_rows = [_hard_skills_row_to_ui(r) for r in hs_rows if isinstance(r, dict)]
+            if not hs_rows:
+                hs_rows = [{"Kategorie": "", "Werkzeuge": []}]
+            st.session_state[DATA_HS] = hs_rows
+
+            hs_edited = st.data_editor(
+                hs_rows,
                 num_rows="dynamic",
                 width="stretch",
-                key="ed_skills_overview_main",
+                hide_index=True,
+                key=W_HS,
                 column_config={
                     "Kategorie": st.column_config.TextColumn("Kategorie"),
                     "Werkzeuge": st.column_config.ListColumn("Werkzeuge/Technologien"),
-                    "Jahre Erfahrung": st.column_config.TextColumn("Jahre Erfahrung")
-                }
+                },
             )
-            edited["skills_overview"] = skills_edited
 
-    # --- Sprachen (languages) ---
-    if isinstance(edited.get("languages"), list):
+            merged_hs = _apply_data_editor_deltas(W_HS, hs_edited if isinstance(hs_edited, list) else hs_rows)
+            st.session_state[DATA_HS] = merged_hs
+
+            new_hard_skills = {}
+            for row in merged_hs:
+                if not isinstance(row, dict):
+                    continue
+                cat = str(row.get("Kategorie", "")).strip()
+                if not cat:
+                    continue
+                tools = row.get("Werkzeuge", [])
+                if not isinstance(tools, list):
+                    tools = _norm_list(tools)
+                tools = [str(t).strip() for t in tools if str(t).strip()]
+                new_hard_skills[cat] = tools
+
+            edited["hard_skills"] = new_hard_skills
+
+        # -------------------------
+        # Skills overview
+        # -------------------------
+        with st.expander("Kompetenzübersicht (Skills Overview)", expanded=False):
+            W_SK = "W_skills_overview_editor"
+            DATA_SK = "DATA_skills_overview_rows"
+
+            _reset_editor_widget_key_if_corrupt(W_SK)
+
+            initial = edited.get("skills_overview", [])
+            if not isinstance(initial, list):
+                initial = []
+
+            def _skills_overview_row_to_ui(row: dict) -> dict:
+                if not isinstance(row, dict):
+                    return {"Kategorie": "", "Werkzeuge": [], "Jahre Erfahrung": ""}
+                cat = row.get("Kategorie", "") or row.get("category", "") or ""
+                tools = row.get("Werkzeuge", None)
+                if tools is None:
+                    tools = row.get("tools", [])
+                years = row.get("Jahre Erfahrung", "") or row.get("years_of_experience", "") or ""
+                tools_list = tools if isinstance(tools, list) else _norm_list(tools)
+                tools_list = [str(t).strip() for t in tools_list if str(t).strip()]
+                return {
+                    "Kategorie": str(cat or ""),
+                    "Werkzeuge": tools_list,
+                    "Jahre Erfahrung": str(years or ""),
+                }
+
+            initial_rows = []
+            for row in initial:
+                if not isinstance(row, dict):
+                    continue
+                initial_rows.append(_skills_overview_row_to_ui(row))
+
+            if not initial_rows:
+                initial_rows = [{"Kategorie": "", "Werkzeuge": [], "Jahre Erfahrung": ""}]
+
+            sk_rows = _ensure_data_rows(DATA_SK, initial_rows)
+            # Normalize any previously stored rows to avoid showing legacy/empty columns.
+            sk_rows = [_skills_overview_row_to_ui(r) for r in sk_rows if isinstance(r, dict)]
+            if not sk_rows:
+                sk_rows = [{"Kategorie": "", "Werkzeuge": [], "Jahre Erfahrung": ""}]
+            st.session_state[DATA_SK] = sk_rows
+
+            sk_edited = st.data_editor(
+                sk_rows,
+                num_rows="dynamic",
+                width="stretch",
+                hide_index=True,
+                key=W_SK,
+                column_config={
+                    "Kategorie": st.column_config.TextColumn("Kategorie"),
+                    "Werkzeuge": st.column_config.ListColumn("Werkzeuge/Technologien"),
+                    "Jahre Erfahrung": st.column_config.TextColumn("Jahre Erfahrung"),
+                },
+            )
+
+            merged_sk = _apply_data_editor_deltas(W_SK, sk_edited if isinstance(sk_edited, list) else sk_rows)
+            st.session_state[DATA_SK] = merged_sk
+
+            cleaned = []
+            for row in merged_sk:
+                if not isinstance(row, dict):
+                    continue
+                cleaned.append(_skills_overview_row_to_ui(row))
+
+            edited["skills_overview"] = cleaned
+
+        # -------------------------
+        # Languages
+        # -------------------------
         with st.expander("Sprachen", expanded=False):
-            lang_rows = edited.get("languages", [])
-            if not isinstance(lang_rows, list):
-                lang_rows = []
+            def lang_row_to_editor(row):
+                if not isinstance(row, dict):
+                    return {"Sprache": "", "Niveau": ""}
+                if "language" in row or "level" in row:
+                    return {
+                        "Sprache": str(row.get("language", "") or ""),
+                        "Niveau": str(row.get("level", "") or ""),
+                    }
+                return {
+                    "Sprache": str(row.get("Sprache", "") or ""),
+                    "Niveau": str(row.get("Niveau", "") or ""),
+                }
+
+            initial_lang_rows = edited.get("languages", [])
+            if not isinstance(initial_lang_rows, list):
+                initial_lang_rows = []
+
+            lang_rows = [lang_row_to_editor(r) for r in initial_lang_rows]
             if not lang_rows:
                 lang_rows = [{"Sprache": "", "Niveau": ""}]
+
             lang_edited = st.data_editor(
                 lang_rows,
                 num_rows="dynamic",
                 width="stretch",
+                hide_index=True,
                 key="ed_languages_main",
                 column_config={
                     "Sprache": st.column_config.TextColumn("Sprache"),
-                    "Niveau": st.column_config.TextColumn("Niveau")
-                }
+                    "Niveau": st.column_config.TextColumn("Niveau"),
+                },
             )
-            edited["languages"] = lang_edited
-            st.session_state["languages"] = lang_edited
 
-    # --- Ausbildung (Education) ---
-    # Гарантируем, что education всегда список для отображения редактора
-    if not isinstance(edited.get("education"), list):
-        edited["education"] = []
-    with st.expander("Ausbildung (Education)", expanded=False):
-        edu_rows = edited.get("education", [])
-        if not isinstance(edu_rows, list):
-            edu_rows = []
-        if not edu_rows:
-            edu_rows = [{"Institution": "", "Abschluss": "", "Jahr": ""}]
-        edu_edited = st.data_editor(
-            edu_rows,
-            num_rows="dynamic",
-            width="stretch",
-            key="ed_education_main",
-            column_config={
-                "Institution": st.column_config.TextColumn("Institution/Universität"),
-                "Abschluss": st.column_config.TextColumn("Abschluss/Fachrichtung"),
-                "Jahr": st.column_config.TextColumn("Abschlussjahr")
-            }
+            merged_lang = _apply_data_editor_deltas("ed_languages_main", lang_edited if isinstance(lang_edited, list) else lang_rows)
+            edited["languages"] = merged_lang
+
+        # -------------------------
+        # Education
+        # -------------------------
+        with st.expander("Ausbildung (Education)", expanded=False):
+            def edu_row_to_editor(row):
+                if not isinstance(row, dict):
+                    return {"Institution": "", "Abschluss": "", "Jahr": ""}
+                if any(k in row for k in ("degree", "institution", "year")):
+                    return {
+                        "Institution": str(row.get("institution", "") or ""),
+                        "Abschluss": str(row.get("degree", "") or ""),
+                        "Jahr": str(row.get("year", "") or ""),
+                    }
+                return {
+                    "Institution": str(row.get("Institution", "") or ""),
+                    "Abschluss": str(row.get("Abschluss", "") or ""),
+                    "Jahr": str(row.get("Jahr", "") or ""),
+                }
+
+            initial_edu = edited.get("education", [])
+            if not isinstance(initial_edu, list):
+                initial_edu = []
+
+            edu_rows = [edu_row_to_editor(r) for r in initial_edu]
+            if not edu_rows:
+                edu_rows = [{"Institution": "", "Abschluss": "", "Jahr": ""}]
+
+            edu_edited = st.data_editor(
+                edu_rows,
+                num_rows="dynamic",
+                width="stretch",
+                hide_index=True,
+                key="ed_education_main",
+                column_config={
+                    "Institution": st.column_config.TextColumn("Institution/Universität"),
+                    "Abschluss": st.column_config.TextColumn("Abschluss/Fachrichtung"),
+                    "Jahr": st.column_config.TextColumn("Abschlussjahr"),
+                },
+            )
+
+            merged_edu = _apply_data_editor_deltas("ed_education_main", edu_edited if isinstance(edu_edited, list) else edu_rows)
+            edited["education"] = merged_edu
+
+        # --- V3 Text Summary (optional) ---
+        cv_data_for_summary = st.session_state.get("filled_json", {})
+        st.markdown("### 📝 Textbasierte Zusammenfassung")
+        if st.button("Zusammenfassung generieren", key="btn_generate_v3_summary"):
+            with st.spinner("GPT generiert die textbasierte Zusammenfassung…"):
+                from chatgpt_client import gpt_generate_text_cv_summary
+                try:
+                    summary_result = gpt_generate_text_cv_summary(
+                        cv_data=cv_data_for_summary,
+                        model="gpt-4o-mini"
+                    )
+                    if summary_result.get("success") and summary_result.get("output_text"):
+                        st.session_state["v3_summary_text"] = summary_result["output_text"]
+                        st.success("Summary erfolgreich erstellt.")
+                    else:
+                        st.warning("⚠️ Keine Zusammenfassung erhalten.")
+                except Exception as e:
+                    st.error(f"Fehler bei der Generierung: {e}")
+
+        if "v3_summary_text" in st.session_state:
+            st.text_area(
+                "📄 Zusammenfassung (nur Text)",
+                value=st.session_state["v3_summary_text"],
+                height=300,
+                disabled=False,
+                key="v3_summary_area",
+            )
+
+        # -------------------------
+        # Save + PDF
+        # -------------------------
+        st.markdown("---")
+        st.subheader("⬇️ Ergebnisse herunterladen")
+
+        # Yellow warning must always be visible when there are unsaved edits.
+        # Button here commits ALL project field edits (table + filter selection) and updates the PDF.
+        save_clicked_all = st.button(
+            "💾 Alle Projekt-Änderungen speichern & PDF aktualisieren",
+            key="btn_save_all_projects_and_pdf_footer",
         )
-        edited["education"] = edu_edited
-        st.session_state["education"] = edu_edited
-        if "filled_json" in st.session_state:
-            st.session_state["filled_json"]["education"] = edu_edited
 
+        save_clicked = bool(save_clicked_all)
 
+        if st.session_state.get("pdf_needs_refresh", False) and not save_clicked:
+            st.warning(
+                "⚠️ Es gibt nicht gespeicherte Änderungen (Projekte). Bitte speichere, bevor du das PDF herunterlädst."
+            )
 
+        if save_clicked:
+            # 1) Final JSON = edited_json (full projects, full languages normalized)
+            final_json = copy.deepcopy(st.session_state["edited_json"])
 
-# --- после всех редакторов (Hard Skills / Skills Overview / Summary / Languages etc.) ---
-if "filled_json" in st.session_state:
-    st.markdown("---")
-    st.subheader("⬇️ Ergebnisse herunterladen")
-
-    # PDF-Option — теперь в конце
-    use_filter_for_pdf = st.checkbox(
-        "Nur gefilterte Projekte ins PDF übernehmen",
-        value=True,
-        key="use_filter_for_pdf_footer"
-    )
-
-    # Гарантируем, что edited определён даже если filled_json нет в session_state
-    edited = dict(st.session_state["filled_json"]) if isinstance(st.session_state["filled_json"], dict) else {}
-
-    # Берём актуальные проекты
-    projects_full_now = st.session_state.get("projects_experience_full", edited.get("projects_experience", []))
-    filtered_projects_now = st.session_state.get("filtered_projects_for_pdf", projects_full_now)
-    selected_domains_now = st.session_state.get("selected_domains_for_pdf", [])
-
-    # --- строим "снимок" данных, которые ДОЛЖНЫ попасть в PDF ---
-    pdf_preview = dict(edited)
-
-    if use_filter_for_pdf and selected_domains_now:
-        pdf_preview["projects_experience"] = filtered_projects_now
-        pdf_preview["domains"] = st.session_state.get("pdf_domains_list", [])
-        pdf_preview["companies"] = st.session_state.get("pdf_companies_list", [])
-    else:
-        pdf_preview["projects_experience"] = projects_full_now
-        # domains/companies считаем из полного списка проектов
-        pdf_preview["domains"] = sorted({
-            str(d).strip()
-            for p in projects_full_now if isinstance(p, dict)
-            for d in _norm_list(p.get("domains"))
-            if str(d).strip()
-        })
-        pdf_preview["companies"] = sorted({
-            str(p.get("company", "")).strip()
-            for p in projects_full_now
-            if isinstance(p, dict) and str(p.get("company", "")).strip()
-        })
-
-    # title safety
-    if not pdf_preview.get("title"):
-        pdf_preview["title"] = pdf_preview.get("position") or pdf_preview.get("role") or ""
-
-    current_pdf_hash = _stable_hash(pdf_preview)
-    last_saved_hash = st.session_state.get("last_saved_pdf_hash")
-
-    pdf_needs_refresh = (last_saved_hash != current_pdf_hash)
-    st.session_state["pdf_needs_refresh"] = pdf_needs_refresh
-
-    if pdf_needs_refresh:
-        st.warning("PDF ist nicht aktuell. Bitte klicke auf „Änderungen speichern & PDF aktualisieren“.")
-
-    # --- ЕДИНСТВЕННАЯ КНОПКА: сохранить всё + обновить PDF ---
-    if st.button("💾 Änderungen speichern & PDF aktualisieren", key="btn_save_all_and_pdf_footer"):
-        # 1) сохраняем финальный JSON (всегда полный, без фильтра — чтобы JSON был “истиной”)
-        final_json = dict(edited)
-        final_json["projects_experience"] = projects_full_now
-
-        st.session_state["filled_json"] = final_json
-        st.session_state["json_bytes"] = json.dumps(final_json, indent=2, ensure_ascii=False).encode("utf-8")
-
-        # 2) создаём PDF по pdf_preview (уже с учётом фильтра/без фильтра)
-        pdf_json = dict(pdf_preview)
-
-        # Удаляем пустые поля перед генерацией PDF
-        def _remove_empty_fields(d):
-            if isinstance(d, dict):
-                return {k: _remove_empty_fields(v) for k, v in d.items() if v not in (None, "", [], {})}
-            elif isinstance(d, list):
-                return [ _remove_empty_fields(x) for x in d if x not in (None, "", [], {}) ]
+            # ensure projects: source-of-truth = projects editor state (DATA_projects_rows)
+            # + apply uncommitted st.data_editor deltas to avoid "every other time" saves.
+            current_rows = st.session_state.get("DATA_projects_rows", final_json.get("projects_experience", []))
+            projects_full_now = _apply_data_editor_deltas("W_projects_editor", current_rows if isinstance(current_rows, list) else [])
+            st.session_state["DATA_projects_rows"] = projects_full_now
+            if isinstance(projects_full_now, list):
+                projects_full_now = [p for p in projects_full_now if _project_has_content(p)]
             else:
-                return d
-        pdf_json = _remove_empty_fields(pdf_json)
+                projects_full_now = []
+            final_json["projects_experience"] = projects_full_now
 
-        if not pdf_json.get("title"):
-            pdf_json["title"] = pdf_json.get("position") or pdf_json.get("role") or ""
+            # sync other editor tables (captures uncommitted edits on first click)
+            hs_rows_now = st.session_state.get("DATA_hard_skills_rows", [])
+            hs_rows_now = _apply_data_editor_deltas("W_hard_skills_editor", hs_rows_now if isinstance(hs_rows_now, list) else [])
+            st.session_state["DATA_hard_skills_rows"] = hs_rows_now
 
-        output_dir = "data_output"
-        os.makedirs(output_dir, exist_ok=True)
+            sk_rows_now = st.session_state.get("DATA_skills_overview_rows", [])
+            sk_rows_now = _apply_data_editor_deltas("W_skills_overview_editor", sk_rows_now if isinstance(sk_rows_now, list) else [])
+            st.session_state["DATA_skills_overview_rows"] = sk_rows_now
 
-        pdf_name = st.session_state.get("pdf_name", "CV_Streamlit")
+            lang_rows_now = final_json.get("languages", [])
+            lang_rows_now = _apply_data_editor_deltas("ed_languages_main", lang_rows_now if isinstance(lang_rows_now, list) else [])
+            final_json["languages"] = lang_rows_now
 
-        pdf_path = create_pretty_first_section(pdf_json, output_dir=output_dir, prefix=pdf_name)
-        with open(pdf_path, "rb") as f:
-            st.session_state["pdf_bytes"] = f.read()
+            edu_rows_now = final_json.get("education", [])
+            edu_rows_now = _apply_data_editor_deltas("ed_education_main", edu_rows_now if isinstance(edu_rows_now, list) else [])
+            final_json["education"] = edu_rows_now
 
-        # 3) помечаем PDF как актуальный
-        st.session_state["last_saved_pdf_hash"] = current_pdf_hash
-        st.session_state["pdf_needs_refresh"] = False
-        st.success("Alle Änderungen wurden gespeichert und das PDF wurde aktualisiert.")
+            # normalize languages to {language, level}
+            if isinstance(final_json.get("languages"), list):
+                final_json["languages"] = languages_to_pdf_format(final_json["languages"])
 
-    # --- Downloads ---
+            # title safety
+            if not final_json.get("title"):
+                final_json["title"] = final_json.get("position") or final_json.get("role") or ""
+
+            st.session_state["filled_json"] = final_json
+            st.session_state["edited_json"] = copy.deepcopy(final_json)  # keep in sync after save
+            st.session_state["json_bytes"] = json.dumps(final_json, indent=2, ensure_ascii=False).encode("utf-8")
+
+            # 2) Build PDF preview with filtered projects + domains/companies lists
+            filtered_projects_now = st.session_state.get(
+                "filtered_projects_for_pdf", final_json.get("projects_experience", [])
+            )
+            if isinstance(filtered_projects_now, list):
+                filtered_projects_now = [p for p in filtered_projects_now if _project_has_content(p)]
+            else:
+                filtered_projects_now = []
+            pdf_preview = copy.deepcopy(final_json)
+            pdf_preview["projects_experience"] = filtered_projects_now
+            pdf_preview["domains"] = st.session_state.get("pdf_domains_list", [])
+            pdf_preview["companies"] = st.session_state.get("pdf_companies_list", [])
+
+            # remove empty fields for pdf generation
+            pdf_json = _remove_empty_fields(pdf_preview)
+
+            if not pdf_json.get("title"):
+                pdf_json["title"] = pdf_json.get("position") or pdf_json.get("role") or ""
+
+            output_dir = "data_output"
+            os.makedirs(output_dir, exist_ok=True)
+            pdf_name = st.session_state.get("pdf_name", "CV_Streamlit")
+
+            pdf_path_out = create_pretty_first_section(pdf_json, output_dir=output_dir, prefix=pdf_name)
+            with open(pdf_path_out, "rb") as f:
+                st.session_state["pdf_bytes"] = f.read()
+
+            st.session_state["last_pdf_fingerprint"] = _fingerprint(pdf_json)
+            st.session_state["pdf_needs_refresh"] = False
+            st.success("Alle Änderungen wurden gespeichert und das PDF wurde aktualisiert.")
+
+    # Downloads
     pdf_name = st.session_state.get("pdf_name", "CV_Streamlit")
 
     st.download_button(
@@ -703,7 +955,7 @@ if "filled_json" in st.session_state:
         data=st.session_state.get("json_bytes", b""),
         file_name=f"{pdf_name}_result.json",
         mime="application/json",
-        key="download_json"
+        key="download_json",
     )
 
     if "pdf_bytes" in st.session_state:
@@ -713,7 +965,5 @@ if "filled_json" in st.session_state:
             file_name=f"{pdf_name}.pdf",
             mime="application/pdf",
             key="download_pdf",
-            disabled=st.session_state.get("pdf_needs_refresh", False)
+            disabled=st.session_state.get("pdf_needs_refresh", False),
         )
-
-
