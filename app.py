@@ -522,7 +522,7 @@ if "filled_json" in st.session_state:
             }
 
 
-# Пример: Skills overview
+# Skills overview
 if isinstance(edited.get("skills_overview"), list):
     with st.expander("Kompetenzübersicht (Skills Overview)", expanded=False):
         skills_rows = edited.get("skills_overview", [])
