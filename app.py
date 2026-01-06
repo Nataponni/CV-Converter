@@ -551,52 +551,52 @@ if "filled_json" in st.session_state:
             )
             edited["skills_overview"] = skills_edited
 
-# --- Sprachen (languages) ---
-if isinstance(edited.get("languages"), list):
-    with st.expander("Sprachen", expanded=False):
-        lang_rows = edited.get("languages", [])
-        if not isinstance(lang_rows, list):
-            lang_rows = []
-        if not lang_rows:
-            lang_rows = [{"Sprache": "", "Niveau": ""}]
-        lang_edited = st.data_editor(
-            lang_rows,
+    # --- Sprachen (languages) ---
+    if isinstance(edited.get("languages"), list):
+        with st.expander("Sprachen", expanded=False):
+            lang_rows = edited.get("languages", [])
+            if not isinstance(lang_rows, list):
+                lang_rows = []
+            if not lang_rows:
+                lang_rows = [{"Sprache": "", "Niveau": ""}]
+            lang_edited = st.data_editor(
+                lang_rows,
+                num_rows="dynamic",
+                width="stretch",
+                key="ed_languages_main",
+                column_config={
+                    "Sprache": st.column_config.TextColumn("Sprache"),
+                    "Niveau": st.column_config.TextColumn("Niveau")
+                }
+            )
+            edited["languages"] = lang_edited
+            st.session_state["languages"] = lang_edited
+
+    # --- Ausbildung (Education) ---
+    # Гарантируем, что education всегда список для отображения редактора
+    if not isinstance(edited.get("education"), list):
+        edited["education"] = []
+    with st.expander("Ausbildung (Education)", expanded=False):
+        edu_rows = edited.get("education", [])
+        if not isinstance(edu_rows, list):
+            edu_rows = []
+        if not edu_rows:
+            edu_rows = [{"Institution": "", "Abschluss": "", "Jahr": ""}]
+        edu_edited = st.data_editor(
+            edu_rows,
             num_rows="dynamic",
             width="stretch",
-            key="ed_languages_main",
+            key="ed_education_main",
             column_config={
-                "Sprache": st.column_config.TextColumn("Sprache"),
-                "Niveau": st.column_config.TextColumn("Niveau")
+                "Institution": st.column_config.TextColumn("Institution/Universität"),
+                "Abschluss": st.column_config.TextColumn("Abschluss/Fachrichtung"),
+                "Jahr": st.column_config.TextColumn("Abschlussjahr")
             }
         )
-        edited["languages"] = lang_edited
-        st.session_state["languages"] = lang_edited
-
-# --- Ausbildung (Education) ---
-# Гарантируем, что education всегда список для отображения редактора
-if not isinstance(edited.get("education"), list):
-    edited["education"] = []
-with st.expander("Ausbildung (Education)", expanded=False):
-    edu_rows = edited.get("education", [])
-    if not isinstance(edu_rows, list):
-        edu_rows = []
-    if not edu_rows:
-        edu_rows = [{"Institution": "", "Abschluss": "", "Jahr": ""}]
-    edu_edited = st.data_editor(
-        edu_rows,
-        num_rows="dynamic",
-        width="stretch",
-        key="ed_education_main",
-        column_config={
-            "Institution": st.column_config.TextColumn("Institution/Universität"),
-            "Abschluss": st.column_config.TextColumn("Abschluss/Fachrichtung"),
-            "Jahr": st.column_config.TextColumn("Abschlussjahr")
-        }
-    )
-    edited["education"] = edu_edited
-    st.session_state["education"] = edu_edited
-    if "filled_json" in st.session_state:
-        st.session_state["filled_json"]["education"] = edu_edited
+        edited["education"] = edu_edited
+        st.session_state["education"] = edu_edited
+        if "filled_json" in st.session_state:
+            st.session_state["filled_json"]["education"] = edu_edited
 
 # --- после всех редакторов (Hard Skills / Skills Overview / Summary / Languages etc.) ---
 st.markdown("---")
