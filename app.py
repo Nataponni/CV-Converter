@@ -598,115 +598,124 @@ if "filled_json" in st.session_state:
         if "filled_json" in st.session_state:
             st.session_state["filled_json"]["education"] = edu_edited
 
-# --- после всех редакторов (Hard Skills / Skills Overview / Summary / Languages etc.) ---
-st.markdown("---")
-st.subheader("⬇️ Ergebnisse herunterladen")
-
-# PDF-Option — теперь в конце
-use_filter_for_pdf = st.checkbox(
-    "Nur gefilterte Projekte ins PDF übernehmen",
-    value=True,
-    key="use_filter_for_pdf_footer"
-)
-
-# Берём актуальные проекты
-projects_full_now = st.session_state.get("projects_experience_full", edited.get("projects_experience", []))
-filtered_projects_now = st.session_state.get("filtered_projects_for_pdf", projects_full_now)
-selected_domains_now = st.session_state.get("selected_domains_for_pdf", [])
-
-# --- строим "снимок" данных, которые ДОЛЖНЫ попасть в PDF ---
-pdf_preview = dict(edited)
-
-if use_filter_for_pdf and selected_domains_now:
-    pdf_preview["projects_experience"] = filtered_projects_now
-    pdf_preview["domains"] = st.session_state.get("pdf_domains_list", [])
-    pdf_preview["companies"] = st.session_state.get("pdf_companies_list", [])
-else:
-    pdf_preview["projects_experience"] = projects_full_now
-    # domains/companies считаем из полного списка проектов
-    pdf_preview["domains"] = sorted({
-        str(d).strip()
-        for p in projects_full_now if isinstance(p, dict)
-        for d in _norm_list(p.get("domains"))
-        if str(d).strip()
-    })
-    pdf_preview["companies"] = sorted({
-        str(p.get("company", "")).strip()
-        for p in projects_full_now
-        if isinstance(p, dict) and str(p.get("company", "")).strip()
-    })
-
-# title safety
-if not pdf_preview.get("title"):
-    pdf_preview["title"] = pdf_preview.get("position") or pdf_preview.get("role") or ""
-
-current_pdf_hash = _stable_hash(pdf_preview)
-last_saved_hash = st.session_state.get("last_saved_pdf_hash")
 
 pdf_needs_refresh = (last_saved_hash != current_pdf_hash)
 st.session_state["pdf_needs_refresh"] = pdf_needs_refresh
+st.download_button(
 
-if pdf_needs_refresh:
-    st.warning("PDF ist nicht aktuell. Bitte klicke auf „Änderungen speichern & PDF aktualisieren“.")
+# --- после всех редакторов (Hard Skills / Skills Overview / Summary / Languages etc.) ---
+if "filled_json" in st.session_state:
+    st.markdown("---")
+    st.subheader("⬇️ Ergebnisse herunterladen")
 
-# --- ЕДИНСТВЕННАЯ КНОПКА: сохранить всё + обновить PDF ---
-if st.button("💾 Änderungen speichern & PDF aktualisieren", key="btn_save_all_and_pdf_footer"):
-    # 1) сохраняем финальный JSON (всегда полный, без фильтра — чтобы JSON был “истиной”)
-    final_json = dict(edited)
-    final_json["projects_experience"] = projects_full_now
+    # PDF-Option — теперь в конце
+    use_filter_for_pdf = st.checkbox(
+        "Nur gefilterte Projekte ins PDF übernehmen",
+        value=True,
+        key="use_filter_for_pdf_footer"
+    )
 
-    st.session_state["filled_json"] = final_json
-    st.session_state["json_bytes"] = json.dumps(final_json, indent=2, ensure_ascii=False).encode("utf-8")
+    # Гарантируем, что edited определён даже если filled_json нет в session_state
+    edited = dict(st.session_state["filled_json"]) if isinstance(st.session_state["filled_json"], dict) else {}
 
-    # 2) создаём PDF по pdf_preview (уже с учётом фильтра/без фильтра)
-    pdf_json = dict(pdf_preview)
+    # Берём актуальные проекты
+    projects_full_now = st.session_state.get("projects_experience_full", edited.get("projects_experience", []))
+    filtered_projects_now = st.session_state.get("filtered_projects_for_pdf", projects_full_now)
+    selected_domains_now = st.session_state.get("selected_domains_for_pdf", [])
 
-    # Удаляем пустые поля перед генерацией PDF
-    def _remove_empty_fields(d):
-        if isinstance(d, dict):
-            return {k: _remove_empty_fields(v) for k, v in d.items() if v not in (None, "", [], {})}
-        elif isinstance(d, list):
-            return [ _remove_empty_fields(x) for x in d if x not in (None, "", [], {}) ]
-        else:
-            return d
-    pdf_json = _remove_empty_fields(pdf_json)
+    # --- строим "снимок" данных, которые ДОЛЖНЫ попасть в PDF ---
+    pdf_preview = dict(edited)
 
-    if not pdf_json.get("title"):
-        pdf_json["title"] = pdf_json.get("position") or pdf_json.get("role") or ""
+    if use_filter_for_pdf and selected_domains_now:
+        pdf_preview["projects_experience"] = filtered_projects_now
+        pdf_preview["domains"] = st.session_state.get("pdf_domains_list", [])
+        pdf_preview["companies"] = st.session_state.get("pdf_companies_list", [])
+    else:
+        pdf_preview["projects_experience"] = projects_full_now
+        # domains/companies считаем из полного списка проектов
+        pdf_preview["domains"] = sorted({
+            str(d).strip()
+            for p in projects_full_now if isinstance(p, dict)
+            for d in _norm_list(p.get("domains"))
+            if str(d).strip()
+        })
+        pdf_preview["companies"] = sorted({
+            str(p.get("company", "")).strip()
+            for p in projects_full_now
+            if isinstance(p, dict) and str(p.get("company", "")).strip()
+        })
 
-    output_dir = "data_output"
-    os.makedirs(output_dir, exist_ok=True)
+    # title safety
+    if not pdf_preview.get("title"):
+        pdf_preview["title"] = pdf_preview.get("position") or pdf_preview.get("role") or ""
 
+    current_pdf_hash = _stable_hash(pdf_preview)
+    last_saved_hash = st.session_state.get("last_saved_pdf_hash")
+
+    pdf_needs_refresh = (last_saved_hash != current_pdf_hash)
+    st.session_state["pdf_needs_refresh"] = pdf_needs_refresh
+
+    if pdf_needs_refresh:
+        st.warning("PDF ist nicht aktuell. Bitte klicke auf „Änderungen speichern & PDF aktualisieren“.")
+
+    # --- ЕДИНСТВЕННАЯ КНОПКА: сохранить всё + обновить PDF ---
+    if st.button("💾 Änderungen speichern & PDF aktualisieren", key="btn_save_all_and_pdf_footer"):
+        # 1) сохраняем финальный JSON (всегда полный, без фильтра — чтобы JSON был “истиной”)
+        final_json = dict(edited)
+        final_json["projects_experience"] = projects_full_now
+
+        st.session_state["filled_json"] = final_json
+        st.session_state["json_bytes"] = json.dumps(final_json, indent=2, ensure_ascii=False).encode("utf-8")
+
+        # 2) создаём PDF по pdf_preview (уже с учётом фильтра/без фильтра)
+        pdf_json = dict(pdf_preview)
+
+        # Удаляем пустые поля перед генерацией PDF
+        def _remove_empty_fields(d):
+            if isinstance(d, dict):
+                return {k: _remove_empty_fields(v) for k, v in d.items() if v not in (None, "", [], {})}
+            elif isinstance(d, list):
+                return [ _remove_empty_fields(x) for x in d if x not in (None, "", [], {}) ]
+            else:
+                return d
+        pdf_json = _remove_empty_fields(pdf_json)
+
+        if not pdf_json.get("title"):
+            pdf_json["title"] = pdf_json.get("position") or pdf_json.get("role") or ""
+
+        output_dir = "data_output"
+        os.makedirs(output_dir, exist_ok=True)
+
+        pdf_name = st.session_state.get("pdf_name", "CV_Streamlit")
+
+        pdf_path = create_pretty_first_section(pdf_json, output_dir=output_dir, prefix=pdf_name)
+        with open(pdf_path, "rb") as f:
+            st.session_state["pdf_bytes"] = f.read()
+
+        # 3) помечаем PDF как актуальный
+        st.session_state["last_saved_pdf_hash"] = current_pdf_hash
+        st.session_state["pdf_needs_refresh"] = False
+        st.success("Alle Änderungen wurden gespeichert und das PDF wurde aktualisiert.")
+
+    # --- Downloads ---
     pdf_name = st.session_state.get("pdf_name", "CV_Streamlit")
 
-    pdf_path = create_pretty_first_section(pdf_json, output_dir=output_dir, prefix=pdf_name)
-    with open(pdf_path, "rb") as f:
-        st.session_state["pdf_bytes"] = f.read()
-
-    # 3) помечаем PDF как актуальный
-    st.session_state["last_saved_pdf_hash"] = current_pdf_hash
-    st.session_state["pdf_needs_refresh"] = False
-    st.success("Alle Änderungen wurden gespeichert und das PDF wurde aktualisiert.")
-
-# --- Downloads ---
-pdf_name = st.session_state.get("pdf_name", "CV_Streamlit")
-
-st.download_button(
-    label="📘 JSON herunterladen",
-    data=st.session_state.get("json_bytes", b""),
-    file_name=f"{pdf_name}_result.json",
-    mime="application/json",
-    key="download_json"
-)
-
-if "pdf_bytes" in st.session_state:
     st.download_button(
-        label="📄 PDF herunterladen",
-        data=st.session_state["pdf_bytes"],
-        file_name=f"{pdf_name}.pdf",
-        mime="application/pdf",
-        key="download_pdf",
-        disabled=st.session_state.get("pdf_needs_refresh", False)
+        label="📘 JSON herunterladen",
+        data=st.session_state.get("json_bytes", b""),
+        file_name=f"{pdf_name}_result.json",
+        mime="application/json",
+        key="download_json"
     )
+
+    if "pdf_bytes" in st.session_state:
+        st.download_button(
+            label="📄 PDF herunterladen",
+            data=st.session_state["pdf_bytes"],
+            file_name=f"{pdf_name}.pdf",
+            mime="application/pdf",
+            key="download_pdf",
+            disabled=st.session_state.get("pdf_needs_refresh", False)
+        )
 
 
