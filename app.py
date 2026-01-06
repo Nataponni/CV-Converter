@@ -602,6 +602,12 @@ if "filled_json" in st.session_state:
 pdf_needs_refresh = (last_saved_hash != current_pdf_hash)
 st.session_state["pdf_needs_refresh"] = pdf_needs_refresh
 st.download_button(
+    label="📘 JSON herunterladen",
+    data=st.session_state.get("json_bytes", b""),
+    file_name=f"{pdf_name}_result.json",
+    mime="application/json",
+    key="download_json"
+)
 
 # --- после всех редакторов (Hard Skills / Skills Overview / Summary / Languages etc.) ---
 if "filled_json" in st.session_state:
