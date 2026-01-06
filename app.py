@@ -501,23 +501,26 @@ if "filled_json" in st.session_state:
             st.session_state["pdf_needs_refresh"] = True
 
 # Пример: Hard Skills
-if isinstance(edited.get("hard_skills"), dict):
-    with st.expander("Fachliche Kompetenzen (Hard Skills)", expanded=False):
-        hard_skills_list = [{"Kategorie": k, "Werkzeuge": v if isinstance(v, list) else [v]} for k, v in edited["hard_skills"].items()]
-        hard_skills_edited = st.data_editor(
-            hard_skills_list,
-            num_rows="dynamic",
-            width="stretch",
-            key="ed_hard_skills",
-            column_config={
-                "Kategorie": st.column_config.TextColumn("Kategorie"),
-                "Werkzeuge": st.column_config.ListColumn("Werkzeuge/Technologien")
+if "filled_json" in st.session_state:
+    edited = dict(st.session_state["filled_json"]) if isinstance(st.session_state["filled_json"], dict) else {}
+    if isinstance(edited.get("hard_skills"), dict):
+        with st.expander("Fachliche Kompetenzen (Hard Skills)", expanded=False):
+            hard_skills_list = [{"Kategorie": k, "Werkzeuge": v if isinstance(v, list) else [v]} for k, v in edited["hard_skills"].items()]
+            hard_skills_edited = st.data_editor(
+                hard_skills_list,
+                num_rows="dynamic",
+                width="stretch",
+                key="ed_hard_skills",
+                column_config={
+                    "Kategorie": st.column_config.TextColumn("Kategorie"),
+                    "Werkzeuge": st.column_config.ListColumn("Werkzeuge/Technologien")
+                }
+            )
+            edited["hard_skills"] = {
+                row["Kategorie"]: row["Werkzeuge"]
+                for row in hard_skills_edited if row.get("Kategorie")
             }
-        )
-        edited["hard_skills"] = {
-            row["Kategorie"]: row["Werkzeuge"]
-            for row in hard_skills_edited if row.get("Kategorie")
-        }
+
 
 # Пример: Skills overview
 if isinstance(edited.get("skills_overview"), list):

@@ -51,30 +51,24 @@ In the "projects_experience" field:
 
 • Extract any block that contains at least a `project_title:` — even if duration is missing.
   → These blocks are always valid. Extract them even if role, overview, or tech_stack are missing. Fill missing fields with empty values.
+• For each project, extract:
+  - company: Company name ONLY, without city or country (e.g., "Accenture", "Access Bank PLC", "Siemens AG"). Remove location info. If not mentioned, leave empty "".
+  - domains: Array of business industries/sectors of the client/company (e.g., ["Manufacturing"], ["Banking"]).
+    * Use ONLY business industries (Banking, Healthcare, Manufacturing, Retail, E-Commerce, etc.)
+    * FORBIDDEN: Cloud, DevOps, Data Engineering, AI, ML, Big Data (these are technical areas)
+    * Look for mentions like "for a bank", "automotive client", "healthcare provider"
+    * If unclear, use empty array []
 • Preserve the full "duration" exactly as written (e.g., "Jul 2021 – Present"). Do not modify, translate, or guess.
-• Responsibilities MUST be clear, concise, and professional.
-  - Create 3–5 bullet points per project.
-  - Each bullet MUST be 26–30 words. Target exactly 28 words for optimal balance.
-  - Count every word: articles, prepositions, conjunctions, technical terms all count.
-  - CRITICAL: Focus on MECHANISM (HOW), not effect/result. Describe the method, approach, or implementation technique.
-  - Structure: Action verb + detailed mechanism/method + technical context. Results are secondary.
-  - Example (28 words): "Architected and maintained Azure ARM and Bicep templates to standardize infrastructure provisioning across development, test, and production environments using declarative configuration and version control."
-  - Example (27 words): "Developed CI/CD pipelines with Azure DevOps YAML using gated approvals, environment-specific variables, and automated rollback mechanisms to control release processes across teams."
-  - Example (28 words): "Implemented Datadog APM and infrastructure monitoring by configuring custom dashboards, performance metrics collection, and automated alert thresholds to track service health in production."
-  - BAD (focuses on result): "ensuring efficient provisioning across different environments"
-  - GOOD (focuses on mechanism): "standardizing provisioning across dev, test, and production environments"
-  - BAD: "improving application performance"
-  - GOOD: "implementing caching strategies and database query optimization"
-  - Keep it direct and professional: Emphasize the concrete actions, methods, and techniques used.
-  - FORBIDDEN words to NEVER use: comprehensive, robust, effectively, successfully, seamlessly, efficiently, ensuring, enabling, leading to, resulting in.
-  - Do NOT expand acronyms unless absolutely necessary for clarity (use "ARM" not "Azure Resource Manager", "CI/CD" not "Continuous Integration/Continuous Deployment").
-  - Use precise verbs: Architected, Developed, Implemented, Designed, Built, Deployed, Configured, Automated, Standardized, Orchestrated, Integrated.
-  - Include specific mechanisms: exact tools, configurations, architectural patterns, methods, processes.
-  - Mention technical context: environments, scale, integration points, architectural constraints.
-  - If impact/result is mentioned, keep it brief and secondary to the mechanism.
-  - Do NOT invent metrics; include quantitative results only if present in source.
-  - If a bullet is <26 words, add more detail about the mechanism or technical approach.
-  - If a bullet is >30 words, remove redundant words or simplify phrasing.
+• Responsibilities: 3–5 bullets, 26–30 words each (target 28).
+  - Focus on MECHANISM (HOW): describe method, tools, approach — NOT results.
+  - Structure: Action verb + specific method/tool + technical context.
+  - Example: "Developed CI/CD pipelines with Azure DevOps YAML using gated approvals, environment-specific variables, and automated rollback mechanisms to control release processes across teams." (27 words)
+  - BAD: "ensuring efficient provisioning" (result) → GOOD: "standardizing provisioning across dev, test, and production" (method)
+  - FORBIDDEN words: comprehensive, robust, effectively, successfully, seamlessly, efficiently, ensuring, enabling, leading to, resulting in.
+  - Use verbs: Architected, Developed, Implemented, Configured, Built, Deployed, Designed.
+  - Don't expand acronyms (use "CI/CD", "ARM").
+  - Include: specific tools, configurations, patterns, methods.
+  - Don't invent metrics.
 • Extract only real, distinct projects. Use visual or semantic separation as an indicator (headings, date blocks, project keywords, client names, etc.).
 • Do not split a single job into multiple projects unless:
   - It has distinct durations, OR
@@ -115,7 +109,8 @@ In the "projects_experience" field:
   * Do not leave "tools" empty — extract at least one tool per category if mentioned anywhere in the CV.
 
 === PROFILE SUMMARY ===
-- Write a technical, third-person summary (80–100 words) describing technical specialization, tools, and strengths. Do NOT list business domains here.
+- Write a technical, third-person summary (80–100 words) describing technical specialization (e.g., Cloud Engineer, Data Engineer, DevOps Specialist), key tools, and strengths.
+- Do NOT mention business domains/industries (Banking, Healthcare, etc.) in this summary — those belong in the "domains" field.
 - Align this summary strictly with real CV content — don't invent.
 
 === LANGUAGES ===
@@ -156,10 +151,8 @@ In the "projects_experience" field:
   * If any bullet is <26 words, add more detail about the mechanism or technical approach.
   * If any bullet is >30 words, remove redundant words.
   * No arrays or objects are serialized as strings.
-  * "domains" is a JSON array of strings (not a comma-separated string).
   * All fields strictly match the provided SCHEMA.
 - If any rule is violated, regenerate the output until all constraints are satisfied.
-- Validate each domain term before output: if it is not clearly an industry, exclude it.
 
 SCHEMA:
 {{
@@ -167,7 +160,6 @@ SCHEMA:
   "title": "",
   "education": "",
   "languages": [{{"language": "", "level": ""}}],
-  "domains": [],
   "profile_summary": "",
   "hard_skills": {{
     "programming_languages": [],
@@ -191,6 +183,7 @@ SCHEMA:
   "projects_experience": [
     {{
       "project_title": "",
+      "company": "",
       "overview": "",
       "role": "",
       "duration": "",
@@ -300,7 +293,7 @@ TASK: Extract a structured CV JSON from the text, but DO NOT extract any project
 INSTRUCTIONS:
 
 - Extract a complete, structured JSON strictly following the provided SCHEMA.
-- Detect the candidate’s actual domain (e.g., Cloud, DevOps, BI, Data Engineering) based on tools, project content, and terminology.
+
 - Avoid assumptions — rely only on what's clearly stated or strongly implied in the resume.
 - If a field is unknown or not present in the CV, use empty values: "" for strings, [] for lists, {{}} for objects. Do NOT guess.
 - The ONLY exception: for "skills_overview.years_of_experience" you MUST infer an approximate integer value based on project durations and global statements (e.g., "5+ years").
@@ -345,9 +338,12 @@ INSTRUCTIONS:
   ]
 
 === DOMAINS ===
-- Determine the candidate’s professional domains based on the industries of the companies they worked in.
-- Domains must represent business sectors or industries (e.g. Banking, Manufacturing, Consulting, Healthcare, E-Commerce).
-- Do NOT use technical skills, tools, or methodologies (e.g. Big Data, Data Engineering, DevOps, Cloud, AI) as domains.
+- Determine the candidate's professional domains based STRICTLY on the business industries/sectors of the companies or clients they worked for.
+- Domains MUST represent what the company/client DOES as a business (industry/market sector).
+- Examples of CORRECT domains: Banking, Insurance, Healthcare, Manufacturing, Retail, E-Commerce, Telecommunications, Automotive, Energy, Government, Education, Consulting, Real Estate, Logistics, Media, Hospitality.
+- FORBIDDEN as domains (these are technical specializations, NOT industries): Cloud, DevOps, Data Engineering, Machine Learning, AI, Business Intelligence, MLOps, Big Data, IoT, Cybersecurity.
+- Look for company names, client names, or explicit industry mentions (e.g., "for a major bank", "automotive manufacturer", "telecom provider").
+- If industry is unclear or not mentioned, leave domains as empty array [].
 - If the candidate worked in multiple industries, list all relevant domains as a JSON array of strings.
 
 === OUTPUT RULES ===
@@ -363,7 +359,6 @@ SCHEMA:
   "title": "",
   "education": "",
   "languages": [{{"language": "", "level": ""}}],
-  "domains": [],
   "profile_summary": "",
   "hard_skills": {{
     "programming_languages": [],
@@ -415,6 +410,10 @@ In the "projects_experience" field:
 
 • Extract any block that contains at least a `project_title:` — even if duration is missing.
   → These blocks are always valid. Extract them even if role, overview, or tech_stack are missing. Fill missing fields with empty values.
+• For each project, try to identify:
+  - Company/client name ONLY, without city/country (e.g., "Accenture", "Deutsche Bank", "BMW")
+  - Business industry of the company (e.g., Manufacturing, Banking, Automotive)
+  - Keep this information in the raw text for later structuring
 • Preserve the full "duration" exactly as written (e.g., "Jul 2021 – Present"). Do not modify, translate, or guess.
 • Extract only real, distinct projects. Use visual or semantic separation as an indicator (headings, date blocks, project keywords, client names, etc.).
 • For "responsibilities": create clear, concise professional bullet points (3–5 bullets per project). Each bullet MUST be 26–30 words (target exactly 28); count every word; FOCUS ON MECHANISM (how/method), not result; express action + detailed mechanism/technical approach; NEVER use: comprehensive, robust, effectively, successfully, seamlessly, efficiently, ensuring, enabling, leading to, resulting in; do not expand acronyms; use precise verbs; describe specific methods and configurations. Example: "Configured Kubernetes clusters with Helm Charts using automated deployment pipelines, resource quotas, and pod disruption budgets to manage workload distribution across environments." (26 words — ADD 2 words for target 28)
@@ -473,6 +472,7 @@ INPUT FORMAT:
 PROJECT_SCHEMA:
 {{ 
   "project_title": "",
+  "company": "",
   "overview": "",
   "role": "",
   "duration": "",
@@ -483,34 +483,26 @@ PROJECT_SCHEMA:
 
 INSTRUCTIONS:
 - For each input project, produce one object following PROJECT_SCHEMA.
-- Determine project domains (industries/business sectors) based ONLY on the content of the current project.
-- Domains must represent industries (e.g. Banking, Manufacturing, Consulting, Healthcare, E-Commerce).
-- Do NOT use technical skills/tools/methodologies as domains (e.g. Big Data, Cloud, DevOps, AI).
-- If unclear, return an empty list for domains.
+- Extract company name ONLY, without city or country (e.g., "Accenture", "Access Bank PLC", "Siemens AG"). Remove location information. If not mentioned, leave empty "".
+- Determine project domains (industries/business sectors) based STRICTLY on the client's/company's industry mentioned in the project.
+- Domains MUST represent what the client/company DOES as a business (e.g., Banking, Manufacturing, Healthcare, E-Commerce, Telecommunications, Automotive, Government, Insurance, Retail).
+- FORBIDDEN as domains: Cloud, DevOps, Data Engineering, Big Data, AI, Machine Learning, IoT, Business Intelligence (these are technical areas, NOT industries).
+- Look for explicit mentions like "for a bank", "automotive client", "manufacturing industry", "telecom provider", "healthcare company".
+- If the industry is not clearly stated in the project description, return an empty list [].
 - If the original project text is not in English (e.g. German), TRANSLATE all textual fields
-  (project_title, overview, role, responsibilities, tech_stack items) to natural English.
+  (project_title, company, overview, role, responsibilities, tech_stack items) to natural English.
 - Preserve the meaning and level of technical detail when translating.
 - Normalize duration to English format "MMM YYYY – MMM YYYY" or "MMM YYYY – Present".
 - Clean any OCR noise or stray characters (e.g., "Jan 2023 nJetzt -" → "Jan 2023 – Present").
 - Extract:
   - project_title in English (short, descriptive)
+  - company in English (company name ONLY without city/country, e.g., "Accenture" not "Accenture, Dublin Ireland")
   - overview in English (60-80 words: comprehensive context about the project, its business goal, and scope)
   - role in English (e.g., "Lead BI Developer", "Data Engineer")
   - duration exactly as written in the text
-  - responsibilities as 3–5 clear, concise English bullet points. Each bullet: 26–30 words (target exactly 28).
-  * Structure: action + detailed mechanism/method + technical context. Focus on HOW, not results.
-  * NEVER use: comprehensive, robust, effectively, successfully, seamlessly, efficiently, ensuring, enabling, leading to, resulting in.
-  * Do not expand acronyms unnecessarily.
-  - tech_stack as a flat list of tools/technologies.
-- For each responsibility bullet point:
-  * Start with an action verb (Designed, Built, Implemented, etc.)
-  * One bullet = ONE sentence; include one key task and one clear impact
-  * Each bullet: 26–30 words (target exactly 28), focus on mechanism/method (HOW), not results.
-  * NEVER use: comprehensive, robust, effectively, successfully, seamlessly, efficiently, ensuring, enabling, leading to, resulting in.
-  * Keep acronyms unexpanded unless critical.
-  * Be concrete and technical; avoid generic corporate phrasing
-  * Mention business domain briefly (2–4 words) if relevant
-  * Do NOT invent metrics or numbers; only include quantitative values if explicitly present in the source; otherwise describe impact qualitatively.
+  - domains as array of business industries (e.g., ["Banking"], ["Healthcare", "Insurance"])
+  - responsibilities: 3–5 bullets, 26–30 words each (target 28). Focus on HOW (method/tools), not results. Action verb + specific method + technical context. FORBIDDEN: comprehensive, robust, effectively, successfully, seamlessly, efficiently, ensuring, enabling, leading to, resulting in. Don't expand acronyms.
+  - tech_stack as flat list of tools.
 - If any field is missing in the text, leave it as an empty string or empty list.
 - Return ONLY JSON of the form {{ "projects_experience": [PROJECT_SCHEMA, ...]}}.
 
