@@ -492,10 +492,15 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
         projects_rows = [_project_row_to_ui(r) for r in projects_rows if isinstance(r, dict)]
         if not projects_rows:
             projects_rows = [_project_row_to_ui({})]
+
+        # IMPORTANT: apply pending editor deltas BEFORE rendering the editor.
+        # This prevents losing changes when Streamlit reruns (e.g. user clicks elsewhere).
+        projects_rows = _apply_data_editor_deltas(W_PROJECTS, projects_rows)
+        projects_rows = [_project_row_to_ui(r) for r in projects_rows if isinstance(r, dict)]
         st.session_state[DATA_PROJECTS] = projects_rows
 
         projects_edited = st.data_editor(
-            st.session_state[DATA_PROJECTS],
+            projects_rows,
             num_rows="dynamic",
             width="stretch",
             hide_index=True,

@@ -628,16 +628,39 @@ def make_skills_overview_box(data, styles):
     skills_overview = data.get("skills_overview", [])
     if not skills_overview:
         return None
-    
-    # ✅ Фильтрация по опыту — показываем только навыки с YoE > 0
-    filtered = []
+
+    # Normalize and drop only truly empty rows (no category or no tools).
+    normalized = []
     for item in skills_overview:
-        yoe_raw = str(item.get("years_of_experience", ""))
-        nums = re.findall(r"\d+(?:\.\d+)?", yoe_raw)
-        yoe_num = float(nums[-1]) if nums else 0.0
-        if yoe_num > 0:
-            filtered.append(item)
-    skills_overview = filtered
+        if not isinstance(item, dict):
+            continue
+        # Support both formats:
+        # - English: category/tools/years_of_experience
+        # - Legacy German: Kategorie/Werkzeuge/Jahre Erfahrung
+        cat = (item.get("category") or item.get("Kategorie") or "").strip()
+
+        tools_list = item.get("tools")
+        if tools_list is None:
+            tools_list = item.get("Werkzeuge", [])
+
+        yoe_value = item.get("years_of_experience")
+        if yoe_value is None:
+            yoe_value = item.get("Jahre Erfahrung")
+
+        if isinstance(tools_list, str):
+            tools_list = [t.strip() for t in re.split(r"[,/;]", tools_list) if t.strip()]
+        elif isinstance(tools_list, list):
+            tools_list = [str(t).strip() for t in tools_list if str(t).strip()]
+        else:
+            tools_list = []
+        if not cat or not tools_list:
+            continue
+        normalized.append({
+            "category": cat,
+            "tools": tools_list,
+            "years_of_experience": yoe_value if yoe_value is not None else "",
+        })
+    skills_overview = normalized
     if not skills_overview:
         return None
 
