@@ -1,7 +1,7 @@
 import os
 import re
 import fitz  # PyMuPDF
-from langdetect import detect, DetectorFactory
+from langdetect import DetectorFactory
 from chatgpt_client import ask_chatgpt
 
 DetectorFactory.seed = 0  # Für stabile Sprachenerkennung
