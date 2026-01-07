@@ -66,15 +66,15 @@ def merge_floating_dates(text: str) -> str:
 # ============================================================
 def merge_project_blocks(text: str) -> str:
     """
-    Комбинирует строки ролей и дат в один блок:
+    Combines role lines and date lines into a single block:
     'Lead BI Developer - Inpro Analytics GmbH' + '01.23 – Jetzt'
     → 'Lead BI Developer - Inpro Analytics GmbH 01.23 – Jetzt'
     """
-    # Соединяем даты, стоящие на отдельной строке, с предыдущей
+    # Join dates that appear on a separate line with the previous line
     text = re.sub(r'(\n)(\d{1,2}[./]\d{2}\s*[–-]\s*(Jetzt|Heute|Present|\d{1,2}[./]\d{2}))', r' \2', text)
     text = re.sub(r'(\n)(\d{4}\s*[–-]\s*(Present|\d{4}))', r' \2', text)
 
-    # Вместо lookbehind используем безопасный паттерн с обратной ссылкой
+    # Instead of lookbehind, use a safe pattern with a backreference
     text = re.sub(
         r'(\b(?:Developer|Engineer|Architect|Consultant|Manager|Lead|Analyst|Director|Specialist))\s*\n\s*(\d{1,2}[./]\d{2}\s*[–-]\s*(?:Jetzt|Heute|Present|\d{1,2}[./]\d{2}))',
         r'\1 \2',
@@ -111,7 +111,7 @@ def clean_text(text: str) -> str:
         next_tags = tags[i + 1:]
         next_pattern = "|".join(f"\\[{t}\\]" for t in next_tags) if next_tags else "$"
 
-        # Явно закрываем секцию, чтобы она не захватывала всё до конца
+        # Explicitly close the section so it doesn't consume the rest of the text
         text = re.sub(
             rf"(\[{tag}\])(.*?)(?=\n({next_pattern})|\Z)",
             rf"\1\2[/{tag}]\n",
@@ -221,7 +221,7 @@ TEXT:
     with open(os.path.join(cache_dir, "prepared_text.txt"), "w", encoding="utf-8") as f:
         f.write(final_text)
 
-    # Лёгкая функция очистки для raw_text
+    # Lightweight cleanup for raw_text
     raw_text = re.sub(r"[^\w\s\.\-/–—:,]", " ", raw_text)
     raw_text = re.sub(r"\s{3,}", "\n", raw_text)
     raw_text = re.sub(r"[ \t]+", " ", raw_text)

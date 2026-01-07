@@ -1,5 +1,6 @@
 import streamlit as st
 import json, os, tempfile, time
+import ast
 import threading
 import copy
 import hashlib
@@ -34,6 +35,70 @@ def _norm_list(x):
     return [s] if s else []
 
 
+def _responsibilities_to_text(value) -> str:
+    """Normalize responsibilities value for UI display/editing (multiline string)."""
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        items = [str(x).strip() for x in value if str(x).strip()]
+        return "\n".join(items)
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return ""
+        # Handle stringified list, e.g. "['a', 'b']"
+        if s.startswith("[") and s.endswith("]"):
+            try:
+                parsed = ast.literal_eval(s)
+                if isinstance(parsed, list):
+                    items = [str(x).strip() for x in parsed if str(x).strip()]
+                    return "\n".join(items)
+            except Exception:
+                pass
+        return s
+    return str(value).strip()
+
+
+def _responsibilities_to_list(value) -> list[str]:
+    """Normalize responsibilities value for storage/PDF generation (list[str])."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(x).strip() for x in value if str(x).strip()]
+
+    s = str(value).strip()
+    if not s:
+        return []
+
+    # Handle stringified list, e.g. "['a', 'b']" or "[\"a\", \"b\"]"
+    if s.startswith("[") and s.endswith("]"):
+        for parser in (ast.literal_eval, json.loads):
+            try:
+                parsed = parser(s)
+                if isinstance(parsed, list):
+                    return [str(x).strip() for x in parsed if str(x).strip()]
+            except Exception:
+                continue
+
+    # Split multiline / bullet-like text into items
+    lines = []
+    for line in s.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        line = line.lstrip("•*-·–— ").strip()
+        if line:
+            lines.append(line)
+
+    # If user pasted bullets inline separated by "•"
+    if len(lines) <= 1 and "•" in s:
+        parts = [p.strip() for p in s.split("•") if p.strip()]
+        parts = [p.lstrip("•*-·–— ").strip() for p in parts]
+        lines = [p for p in parts if p]
+
+    return lines
+
+
 def _load_domains_config() -> list[str]:
     config_file = "domains.json"
     if os.path.exists(config_file):
@@ -42,7 +107,7 @@ def _load_domains_config() -> list[str]:
                 data = json.load(f)
                 return sorted(set(d.strip().title() for d in data.get("domains", []) if str(d).strip()))
         except Exception as e:
-            print(f"Ошибка при загрузке доменов: {e}")
+            print(f"Error loading domains: {e}")
     return []
 
 
@@ -53,7 +118,7 @@ def _save_domains_config(domains: list) -> bool:
             json.dump({"domains": sorted(set(domains))}, f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
-        print(f"Ошибка при сохранении доменов: {e}")
+        print(f"Error saving domains: {e}")
         return False
 
 
@@ -479,7 +544,7 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
                 "overview": str(p.get("overview", "") or ""),
                 "role": str(p.get("role", "") or ""),
                 "duration": str(p.get("duration", "") or ""),
-                "responsibilities": str(p.get("responsibilities", "") or ""),
+                "responsibilities": _responsibilities_to_text(p.get("responsibilities")),
                 "tech_stack": _norm_list(p.get("tech_stack")),
                 "domains": _norm_list(p.get("domains")),
             }
@@ -522,7 +587,23 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
         merged_now = _apply_data_editor_deltas(W_PROJECTS, normalized_now)
         merged_now = [_project_row_to_ui(r) for r in merged_now if isinstance(r, dict)]
         st.session_state[DATA_PROJECTS] = merged_now
-        edited["projects_experience"] = merged_now
+
+        # Store responsibilities as list[str] (not a stringified Python list)
+        data_projects = []
+        for r in merged_now:
+            if not isinstance(r, dict):
+                continue
+            data_projects.append({
+                "project_title": str(r.get("project_title", "") or ""),
+                "company": str(r.get("company", "") or ""),
+                "overview": str(r.get("overview", "") or ""),
+                "role": str(r.get("role", "") or ""),
+                "duration": str(r.get("duration", "") or ""),
+                "responsibilities": _responsibilities_to_list(r.get("responsibilities")),
+                "tech_stack": _norm_list(r.get("tech_stack")),
+                "domains": _norm_list(r.get("domains")),
+            })
+        edited["projects_experience"] = data_projects
 
         def _autofill_domains_from_projects():
             rows = st.session_state.get(DATA_PROJECTS, [])
@@ -537,7 +618,7 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
             _save_domains_config(sorted(config_domains | new_domains))
 
         st.button(
-            "🪄 Domänen automatisch erkennen",
+            "Domänen aus Projekten in domains.json übernehmen",
             key="btn_autofill_project_domains_main",
             on_click=_autofill_domains_from_projects,
         )

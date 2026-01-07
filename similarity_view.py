@@ -84,7 +84,7 @@ def generate_report_pdf_bytes(create_pdf_func, filled_json: dict, original_pdf_p
         reverse=True
     )
     if not pdf_files:
-        raise FileNotFoundError("Не найден созданный PDF-файл после генерации.")
+        raise FileNotFoundError("No generated PDF file found after creation.")
 
     latest_pdf = pdf_files[0]
 

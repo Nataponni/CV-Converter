@@ -18,11 +18,12 @@ logging.basicConfig(level=logging.INFO)
 # ============================================================
 def ask_chatgpt(text, mode="details", base_structure=None, model="gpt-5-mini"):
     """
-    Универсальная функция вызова GPT для CV-парсинга.
-    Поддерживает режимы:
-    - structure: выводит структуру JSON
-    - details: извлекает все поля из текста
-    - fix: заполняет пустые поля
+    Universal function to call GPT for CV parsing.
+
+    Modes:
+    - structure: returns only the JSON skeleton (keys with empty values)
+    - details: extracts all fields from the text
+    - fix: fills missing/empty fields while keeping the schema intact
     """
     if mode == "structure":
         task_description = "Extract only the structural JSON skeleton of the CV with all field names but empty values."
@@ -182,15 +183,15 @@ SCHEMA:
   ],
   "website": ""
 }}
-
-
-# ВАЖНО: Поле education — это список всех полученных образований. Для каждого образования укажи degree (степень/квалификация), institution (учебное заведение), year (год окончания или период обучения). Если информации нет, оставь поле пустым, но структуру сохраняй.
+# IMPORTANT: The education field is a list of all education entries. For each entry, provide
+# degree, institution, and year (graduation year or study period). If information is missing,
+# leave the value empty, but keep the structure.
 
 TEXT:
 {text}
 """
 
-# --- Создание сообщений
+  # --- Build messages
     messages = [
         {"role": "system", "content": "You are an expert CV parser. CRITICAL: When writing responsibilities, describe the MECHANISM (how/method), NOT the result. Never use words like 'enabling', 'ensuring', 'improving', 'reducing' - describe what you DID and HOW."},
         {"role": "user", "content": prompt},
@@ -202,12 +203,13 @@ TEXT:
             "content": f"Use this structure strictly as your schema:\n{json.dumps(base_structure, ensure_ascii=False, indent=2)}"
         })
 
-# --- API-Aufruf
+  # --- API call
     try:
         response = client.chat.completions.create(
             model=model,
             messages=messages,
-)
+      temperature=0.1,
+    )
         raw = response.choices[0].message.content
         return {"raw_response": raw, "mode": mode, "prompt": prompt}
 
@@ -220,9 +222,10 @@ TEXT:
 
 def safe_json_parse(raw):
     """
-    Безопасно преобразует строку или объект в Python-словарь.
-    Если строка содержит JSON внутри строки (например "[{...}]"),
-    корректно разворачивает его.
+    Safely converts a string or object into a Python dict/list.
+
+    If a string contains JSON embedded inside a string (e.g. "[{...}]"),
+    it attempts to unwrap it.
     """
     if isinstance(raw, dict):
         return raw
@@ -232,15 +235,15 @@ def safe_json_parse(raw):
         return {}
 
     try:
-        # 🧠 Пробуем обычный JSON
+        # 🧠 Try standard JSON
         return json.loads(raw)
     except json.JSONDecodeError:
-        # 🧩 Иногда GPT использует одинарные кавычки
+        # 🧩 Sometimes GPT uses single quotes
         try:
             return json.loads(raw.replace("'", '"'))
         except Exception:
             pass
-        # 🧩 Иногда строка — это Python-представление
+        # 🧩 Sometimes the string is a Python literal representation
         try:
             return ast.literal_eval(raw)
         except Exception as e:
@@ -250,7 +253,7 @@ def safe_json_parse(raw):
 # ============================================================
 
 def _call_gpt_and_parse(prompt: str, model: str = "gpt-4o-mini") -> dict:
-    """Один GPT-вызов + безопасный разбор JSON (общий хелпер для JSON-ответов)."""
+    """Single GPT call + safe JSON parsing (shared helper for JSON responses)."""
     try:
         messages = [
             {"role": "system", "content": "You are an expert CV parser."},
@@ -259,7 +262,7 @@ def _call_gpt_and_parse(prompt: str, model: str = "gpt-4o-mini") -> dict:
         response = client.chat.completions.create(
             model=model,
             messages=messages,
-            temperature=0.1
+            temperature=0.1,
         )
         raw = response.choices[0].message.content or ""
         parsed = safe_parse_if_str(raw)
@@ -270,7 +273,7 @@ def _call_gpt_and_parse(prompt: str, model: str = "gpt-4o-mini") -> dict:
 
 
 def gpt_extract_cv_without_projects(text: str, model: str = "gpt-4o-mini") -> dict:
-    """Извлекает все поля CV, кроме projects_experience (он остаётся [])."""
+    """Extracts all CV fields except projects_experience (keeps it as [])."""
     prompt = f"""
 TASK: Extract a structured CV JSON from the text, but DO NOT extract any projects.
 
@@ -379,7 +382,7 @@ TEXT:
 
 
 def gpt_extract_projects_text(text: str, model: str = "gpt-4o-mini") -> dict:
-    """Возвращает один большой текст с проектами, размеченный === PROJECT N ===."""
+    """Returns one large projects-only text, separated by === PROJECT N === markers."""
     prompt = f"""
 TASK: Extract ONLY project sections from the following CV text.
 
@@ -439,7 +442,7 @@ CV_TEXT:
 
 
 def gpt_structurize_projects_from_text(projects_text: str, model: str = "gpt-4o-mini") -> dict:
-    """Преобразует текст с === PROJECT N === в поле `projects_experience` целевой схемы."""
+    """Converts === PROJECT N === text blocks into the target schema's projects_experience."""
     prompt = f"""
 TASK: Convert the following PROJECTS text into structured JSON objects.
 
@@ -505,22 +508,22 @@ def run_stage_based_parsing(text: str, model: str = "gpt-4o-mini") -> dict:
     """
 
     try:
-        # Шаг 1: без проектов
+      # Step 1: extract general CV info (no projects)
         step1 = gpt_extract_cv_without_projects(text, model=model)
         if not step1.get("success"):
             return {"success": False, "error": "Step 1 failed: general CV info"}
 
-        # Шаг 2: получить текст проектов
+      # Step 2: extract raw projects text
         step2 = gpt_extract_projects_text(text, model=model)
         if not step2.get("success"):
             return {"success": False, "error": "Step 2 failed: projects text"}
 
-        # Шаг 3: превратить текст проектов в структуру
+      # Step 3: convert projects text into structured JSON
         step3 = gpt_structurize_projects_from_text(step2["text"], model=model)
         if not step3.get("success"):
             return {"success": False, "error": "Step 3 failed: project structuring"}
 
-        # Объединение
+      # Merge results
         result_json = step1["json"]
         result_json["projects_experience"] = step3["json"].get("projects_experience", [])
 
@@ -543,7 +546,7 @@ def gpt_generate_text_cv_summary(cv_data: Dict[str, Any], model: str = "gpt-4o-m
     - Why Me section (~40 words)
     Output is plain text. No JSON. No explanations.
     """
-  # 1. Преобразуем словарь в строку для промпта
+  # 1) Serialize the dict for the prompt
     structured_data_str = json.dumps(cv_data, ensure_ascii=False, indent=2)
     prompt = f"""
 TASK: Generate a plain-text CV summary from the structured resume data below.
@@ -608,7 +611,7 @@ STRUCTURED CV DATA:
                 CRITICAL RULES: Use only structured data. Do not invent content. Do not use markdown.
                 """
             },
-            # Оставьте в prompt только структуру и переменные
+            # Keep only the structure and variables in the prompt
             {"role": "user", "content": prompt}, 
         ]
 

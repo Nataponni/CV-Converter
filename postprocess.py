@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import datetime
 
 # ===============================================
-# 🔤 Языки
+# 🔤 Languages
 # ===============================================
 
 def unify_languages(langs, original_text=None):
@@ -49,7 +49,7 @@ def unify_languages(langs, original_text=None):
     return unique
 
 # ===============================================
-# 🗓 Даты
+# 🗓 Dates
 # ===============================================
 
 def unify_durations(projects):
@@ -146,7 +146,7 @@ def normalize_year(text: str) -> str:
 
 
 # ============================================================
-# 📆 Исправление открытых диапазонов дат
+# 📆 Fix open date ranges
 # ============================================================
 def fix_open_date_ranges(text_or_json):
     if isinstance(text_or_json, dict):
@@ -210,7 +210,7 @@ def split_skills_overview_rows(skills):
         category = str(row.get("category", "")).strip()
         tools = row.get("tools", [])
 
-        # 🧠 Нормализуем: если строка — разбиваем, если список — оставляем
+        # 🧠 Normalize: if it's a string, split it; if it's a list, keep it
         if isinstance(tools, str):
             tools_list = [t.strip() for t in re.split(r"[,/]", tools) if t.strip()]
         elif isinstance(tools, list):
@@ -269,7 +269,7 @@ def filter_skills_overview(skills):
         tools = item.get("tools", [])
         years = item.get("years_of_experience", "").strip()
 
-        # Удаляем только мусор: без категории или без инструментов
+        # Remove only junk: missing category or missing tools
         if not category or not tools:
             continue
 
@@ -279,7 +279,7 @@ def filter_skills_overview(skills):
             filtered.append(item)
     return filtered
 
-# Защита для вложенных строк
+# Guard for nested string fields
 def safe_parse_if_str(field):
     if isinstance(field, str):
         try:
@@ -291,7 +291,7 @@ def safe_parse_if_str(field):
                 return []
     return field
 # ===============================================
-# 🏭 Нормализация доменов / индустрий
+# 🏭 Domain / industry normalization
 INDUSTRY_KEYWORDS = {
     # --- Financial ---
     "bank": "banking",
@@ -353,8 +353,8 @@ INDUSTRY_KEYWORDS = {
     "municipality": "public sector",
     "ministry": "public sector",
 
-    # --- IT companies (очень осторожно) ---
-    # добавляются ТОЛЬКО если явно указано как бизнес компании
+    # --- IT companies (use with extra caution) ---
+    # Add ONLY if explicitly stated as the company's business domain
     "software company": "software industry",
     "it company": "software industry",
     "saas provider": "software industry",
@@ -365,7 +365,7 @@ def normalize_domains(domains, data):
     text = json.dumps(data, ensure_ascii=False).lower()
     result = set()
 
-    # 1️⃣ если GPT дал домены — принимаем ТОЛЬКО если это индустрии
+    # 1️⃣ If GPT provided domains, accept ONLY if they are industries
     if isinstance(domains, list):
         for d in domains:
             d_low = d.lower()
@@ -373,7 +373,7 @@ def normalize_domains(domains, data):
                 if industry in d_low:
                     result.add(industry)
 
-    # 2️⃣ fallback: ищем по тексту CV / компаниям
+    # 2️⃣ Fallback: search within CV text / companies
     for key, industry in INDUSTRY_KEYWORDS.items():
         if key in text:
             result.add(industry)
@@ -386,11 +386,11 @@ def normalize_project_domains(project: dict) -> list[str]:
     return normalize_domains(project.get("domains", []), project)
 
 # ===============================================
-# Основной вызов
+# Main entry point
 # ===============================================
 
 def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
-    # Если проекты пришли строкой — распарсим обратно в список
+    # If projects arrived as a string, parse them back into a list
     if isinstance(data.get("projects_experience"), str):
         import json, ast
 
@@ -402,7 +402,7 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
             except Exception:
                 data["projects_experience"] = []
 
-    # Применим исправление к duration
+    # Apply duration normalization/fixes
     data["projects_experience"] = unify_durations(data.get("projects_experience", []))
     data["projects_experience"] = fix_open_date_ranges(data["projects_experience"])
 
@@ -428,15 +428,15 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
     combined = sorted({d.strip().title() for d in project_domains if str(d).strip()})
     data["domains"] = combined
 
-    # Форматирование responsibilities для каждого проекта
+    # Format responsibilities for each project
     for project in data.get("projects_experience", []):
         if isinstance(project, dict) and "responsibilities" in project:
             project["responsibilities"] = format_responsibilities(project.get("responsibilities", []))
 
-    # Очистка текста
+    # Clean text fields
     data = clean_text_fields(data)
 
-    # Страховка — если после обработки опять строка, парсим повторно
+    # Safety net: if it's a string again after processing, parse again
     if isinstance(data.get("projects_experience"), str):
         import ast
         try:
@@ -444,7 +444,7 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
         except Exception:
             data["projects_experience"] = []
 
-    # Автозаполнение role и duration, если GPT пропустил
+    # Auto-fill role and duration if GPT missed them
     for project in data.get("projects_experience", []):
         title = project.get("project_title", "") or ""
         overview = project.get("overview", "") or ""
@@ -452,7 +452,7 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
 
         combined_text = " ".join([title, overview, tech])
 
-        # --- ROLE (только из текущего проекта) ---
+        # --- ROLE (only from the current project) ---
         if not project.get("role"):
             role_match = re.search(
                 r"\b(CEO|Lead|Senior|Junior|Data|BI|Cloud|AI|ML|DevOps)?\s*"
@@ -466,7 +466,7 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
             else:
                 project["role"] = ""
 
-        # --- DURATION (только из текста текущего проекта) ---
+        # --- DURATION (only from the current project's text) ---
         if not project.get("duration"):
             duration_match = re.search(
                 r"(\d{1,2}\.\d{2}|\b(19|20)\d{2}\b)\s*[–-]\s*(Jetzt|Heute|Present|\d{1,2}\.\d{2}|\b(19|20)\d{2}\b)",
@@ -482,11 +482,11 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
 
 
 # ===============================================
-# Очистка текстов и проверка структуры
+# Text cleanup and structure validation
 # ===============================================
 
 def clean_text_fields(data):
-    """Рекурсивно очищает строки от мусора и спецсимволов."""
+    """Recursively cleans strings from noise and special symbols."""
     if isinstance(data, dict):
         return {k: clean_text_fields(v) for k, v in data.items()}
     elif isinstance(data, list):
@@ -500,7 +500,7 @@ def clean_text_fields(data):
     return data
 
 def validate_cv_schema(cv_json):
-    """Проверяет, что все ключевые разделы присутствуют."""
+    """Checks that all key sections are present."""
     required_fields = [
         "profile_summary",
         "education",
@@ -515,7 +515,7 @@ def validate_cv_schema(cv_json):
 
 
 # ===============================================
-# 📝 Форматирование responsibilities
+# 📝 Responsibilities formatting
 # ===============================================
 
 def format_responsibilities(responsibilities):
@@ -549,17 +549,17 @@ def format_responsibilities(responsibilities):
         
         word_count = len(item.split())
 
-        # Если пункт уже в целевом диапазоне (65-110 слов), оставляем как есть
+        # If the item is already in the target range (65-110 words), keep it as-is
         if 65 <= word_count <= 110:
             formatted.append(item)
             continue
 
-        # Если короче 65 слов, оставляем — не можем достроить
+        # If it's shorter than 65 words, keep it (we cannot safely expand it)
         if word_count < 65:
             formatted.append(item)
             continue
         
-        # Разбиваем длинные тексты на предложения
+        # Split long text into sentences
         sentences = re.split(r'(?<=[.!?])\s+', item)
         
         current_bullet = []
@@ -572,22 +572,22 @@ def format_responsibilities(responsibilities):
                 
             sentence_words = len(sentence.split())
             
-            # Если добавление предложения не превысит 110 слов
+            # If adding the sentence won't exceed 110 words
             if current_word_count + sentence_words <= 110:
                 current_bullet.append(sentence)
                 current_word_count += sentence_words
             else:
-                # Сохраняем накопленное и начинаем новый bullet
+                # Save accumulated content and start a new bullet
                 if current_bullet:
                     formatted.append(' '.join(current_bullet))
                 current_bullet = [sentence]
                 current_word_count = sentence_words
         
-        # Добавляем последний накопленный bullet
+        # Add the final accumulated bullet
         if current_bullet:
             formatted.append(' '.join(current_bullet))
     
-    # Ограничиваем до 5 пунктов
+    # Limit to 5 bullets
     if len(formatted) > 5:
         formatted = formatted[:5]
     

@@ -1,5 +1,5 @@
-# Local dev настройки, чтобы file_uploader не падал с 403 в некоторых браузерах/вебвью.
-# В проде лучше включить обратно.
+# Local dev settings to prevent file_uploader from failing with 403 in some browsers/webviews.
+# In production, it's better to enable these again.
 
 [server]
 enableCORS = false

@@ -1,7 +1,7 @@
 # tech_mapping.py
 
 
-# ===== МАППИНГ =====
+# ===== MAPPING =====
 TECH_MAPPING = {
     # ===== Programming Languages =====
     r"(?i)\bpython\b": "programming_languages",
@@ -196,7 +196,7 @@ TECH_MAPPING = {
 
 if __name__ == "__main__":
 
-    # Полный маппинг технологий + тест с выводом в PDF
+    # Full technology mapping + PDF output test
 
     import re
     from reportlab.lib import colors
